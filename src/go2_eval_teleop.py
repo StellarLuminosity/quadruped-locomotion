@@ -5,6 +5,7 @@ import torch
 from go2_env import Go2Env
 from rsl_rl.runners import OnPolicyRunner
 import numpy as np
+import math
 import genesis as gs
 # from pynput import keyboard
 
@@ -16,6 +17,16 @@ base_height = 0.3
 jump_height = 0.7
 toggle_jump = True # False
 # stop = False
+
+
+def command_at(t):
+    lin_x = 1.0  # Constant forward
+    lin_y = 0.5 * math.sin(t * 0.2)  # Big left-right sway
+    ang_z = 0.5 * math.sin(t * 0.1)  # Noticeable turning
+    base_height = 0.3 + 0.1 * math.sin(t * 0.3)  # Up-down bounce
+    jump_height = 0.7 + 0.3 * math.sin(t * 0.25)  # Jump modulate
+    return lin_x, lin_y, ang_z, base_height, jump_height
+
 
 # def on_press(key):
 #     global lin_x, lin_y, ang_z, base_height, toggle_jump, jump_height, stop
@@ -76,7 +87,6 @@ def main():
     gs.init(
         logger_verbose_time = False,
         logging_level="warning",
-
     )
 
     log_dir = f"logs/{args.exp_name}"
@@ -105,8 +115,11 @@ def main():
 
     obs, _ = env.reset()
     
-    env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, toggle_jump*jump_height]]).to("cuda:0").repeat(num_envs, 1)
     iter = 0
+    
+    # env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, toggle_jump*jump_height]]).to("cuda:0").repeat(num_envs, 1)
+    lin_x, lin_y, ang_z, base_height, jump_height = command_at(iter)
+    env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, jump_height]], dtype=torch.float).to("cuda:0").repeat(num_envs, 1)
 
     # Start keyboard listener
     # listener = keyboard.Listener(on_press=on_press, on_release=on_release)
@@ -147,7 +160,8 @@ def main():
                 )
                 if args.save_data:
                     images_buffer.append(rgb)
-                    commands_buffer.append([lin_x, lin_y, ang_z, base_height, toggle_jump*jump_height])
+                    # commands_buffer.append([lin_x, lin_y, ang_z, base_height, toggle_jump*jump_height])
+                    commands_buffer.append([lin_x, lin_y, ang_z, base_height, jump_height])
             
             if dones.any():
                 iter = 0
