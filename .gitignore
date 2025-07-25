@@ -136,3 +136,5 @@ logs
 mujoco-3*
 *.zip
 *.pkl
+!logs/my_experiment/model_1000.pt
+!logs/my_experiment/cfgs.pkl
