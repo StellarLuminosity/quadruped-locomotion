@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./rsl_rl",
+        "./genesis"
+    ]
+}
