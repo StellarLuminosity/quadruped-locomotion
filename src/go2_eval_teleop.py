@@ -10,13 +10,24 @@ import genesis as gs
 # from pynput import keyboard
 
 # Global variables to store command velocities
-motion_script = [
-    {"steps": 60, "command": [1.0, 0.0, 0.0, 0.3, 0.7]},  # Forward for 2 sec
-    {"steps": 60, "command": [0.0, 1.0, 0.0, 0.3, 0.7]},  # Left for 2 sec
-    {"steps": 60, "command": [0.0, -1.0, 0.0, 0.3, 0.7]}, # Right for 2 sec
-    {"steps": 60, "command": [-1.0, 0.0, 0.0, 0.3, 0.7]}, # Back for 2 sec
-    {"steps": 60, "command": [0.0, 0.0, 0.0, 0.3, 0.7]},  # Stand still
+key_commands = [
+    [1.0, 0.0, 0.0, 0.3, 0.7],    # forward
+    [0.0, 1.0, 0.0, 0.3, 0.7],    # left
+    [0.0, -1.0, 0.0, 0.3, 0.7],   # right
+    [-1.0, 0.0, 0.0, 0.3, 0.7],   # backward
+    [0.0, 0.0, 0.0, 0.3, 0.7],    # stop
 ]
+steps_per_transition = 60
+
+def interpolate_commands(commands, steps_per_transition):
+    result = []
+    for i in range(len(commands) - 1):
+        start = np.array(commands[i])
+        end = np.array(commands[i + 1])
+        for alpha in np.linspace(0, 1, steps_per_transition):
+            interp = (1 - alpha) * start + alpha * end
+            result.append(interp.tolist())
+    return result
 
 # lin_x = 0.0
 # lin_y = 0.0
@@ -116,13 +127,16 @@ def main():
     motion_index = 0
     motion_step = 0
     
+    motion_commands = interpolate_commands(key_commands, steps_per_transition)
+    
     # env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, toggle_jump*jump_height]]).to("cuda:0").repeat(num_envs, 1)
     # env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, jump_height]], dtype=torch.float).to("cuda:0").repeat(num_envs, 1)
 
     # Start keyboard listener
     # listener = keyboard.Listener(on_press=on_press, on_release=on_release)
     # listener.start()
-    max_iter = 300
+    # max_iter = 300
+    max_iter = len(motion_commands)
 
     reset_jump_toggle_iter = 0
     images_buffer = []
@@ -130,25 +144,21 @@ def main():
     with torch.no_grad():
         # while not stop:
         while True:
+            if iter >= max_iter:
+                break
+                
+            # Get current motion command
+            lin_x, lin_y, ang_z, base_height, jump_height = motion_commands[iter]
+            toggle_jump = True
+
             if iter % 30 == 0:
-                print(f"Iter: {iter}")
-            
+                print(f"Iter: {iter}, lin_x={lin_x:.2f}, lin_y={lin_y:.2f}")
+   
             # env.cam_0.set_pose(lookat=env.base_pos.cpu().numpy()[0],)
             # env.cam_0.set_pose(pos=env.base_pos.cpu().numpy()[0] + np.array([0.5, 0.0, 0.5]) * iter / 50, lookat=env.base_pos.cpu().numpy()[0],)
                 
             actions = policy(obs)
             # print(f"toggle_jump: {toggle_jump}, jump_height: {jump_height}")
-            if motion_index < len(motion_script):
-                cmd = motion_script[motion_index]["command"]
-                lin_x, lin_y, ang_z, base_height, jump_height = cmd
-                toggle_jump = True  # or False if you want no jumping
-
-                motion_step += 1
-                if motion_step >= motion_script[motion_index]["steps"]:
-                    motion_index += 1
-                    motion_step = 0
-            else:
-                break 
              
             env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, toggle_jump*jump_height]], dtype=torch.float).to("cuda:0").repeat(num_envs, 1)
             obs, _, rews, dones, infos = env.step(actions, is_train=False)
@@ -158,8 +168,6 @@ def main():
             if iter == reset_jump_toggle_iter and toggle_jump:
                 toggle_jump = False
                 reset_jump_toggle_iter = 0
-                    
-            iter += 1
             
             # Render the camera
             if env.cam_0 is not None:
@@ -176,8 +184,7 @@ def main():
             if dones.any():
                 iter = 0
             
-            if iter >= max_iter:
-                break
+            iter += 1
           
     if args.save_data:
         # save the images and commands
