@@ -1,5 +1,5 @@
 
-import os
+import os 
 import argparse
 import pickle
 import shutil
@@ -165,6 +165,8 @@ def main():
     if os.path.exists(log_dir):
         shutil.rmtree(log_dir)
     os.makedirs(log_dir, exist_ok=True)
+
+    import pdb; breakpoint()
 
     env = Go2Env(
         num_envs=args.num_envs,

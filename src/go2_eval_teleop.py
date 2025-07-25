@@ -6,7 +6,7 @@ from go2_env import Go2Env
 from rsl_rl.runners import OnPolicyRunner
 import numpy as np
 import genesis as gs
-from pynput import keyboard
+# from pynput import keyboard
 
 # Global variables to store command velocities
 lin_x = 0.0
@@ -14,61 +14,61 @@ lin_y = 0.0
 ang_z = 0.0
 base_height = 0.3
 jump_height = 0.7
-toggle_jump = False
-stop = False
+toggle_jump = True # False
+# stop = False
 
-def on_press(key):
-    global lin_x, lin_y, ang_z, base_height, toggle_jump, jump_height, stop
-    try:
-        if key.char == 'w':
-            lin_x += 0.1
-        elif key.char == 's':
-            lin_x -= 0.1
-        elif key.char == 'a':
-            lin_y += 0.1
-        elif key.char == 'd':
-            lin_y -= 0.1
-        elif key.char == 'q':
-            ang_z += 0.1
-        elif key.char == 'e':
-            ang_z -= 0.1
-        elif key.char == 'r':
-            base_height += 0.1
-        elif key.char == 'f':
-            base_height -= 0.1
-        elif key.char == 'j':
-            toggle_jump = True
-        elif key.char == 'u':
-            jump_height += 0.1
-        elif key.char == 'm':
-            jump_height -= 0.1
-        elif key.char == '8':
-            stop = True
-            
-        
-        lin_x = np.clip(lin_x, -1.0, 2.0)
-        lin_y = np.clip(lin_y, -0.5, 0.5)
-        ang_z = np.clip(ang_z, -0.6, 0.6)
-        base_height = np.clip(base_height, 0.1, 0.5)
-        jump_height = np.clip(jump_height, 0.5, 1.5)
-        
-            
-        # Clear the console
-        os.system('clear')
-        
-        print(f"lin_x: {lin_x:.2f}, lin_y: {lin_y:.2f}, ang_z: {ang_z:.2f}, base_height: {base_height:.2f}, jump: {toggle_jump*jump_height:.2f}")
-    except AttributeError:
-        pass
+# def on_press(key):
+#     global lin_x, lin_y, ang_z, base_height, toggle_jump, jump_height, stop
+#     try:
+#         if key.char == 'w':
+#             lin_x += 0.1
+#         elif key.char == 's':
+#             lin_x -= 0.1
+#         elif key.char == 'a':
+#             lin_y += 0.1
+#         elif key.char == 'd':
+#             lin_y -= 0.1
+#         elif key.char == 'q':
+#             ang_z += 0.1
+#         elif key.char == 'e':
+#             ang_z -= 0.1
+#         elif key.char == 'r':
+#             base_height += 0.1
+#         elif key.char == 'f':
+#             base_height -= 0.1
+#         elif key.char == 'j':
+#             toggle_jump = True
+#         elif key.char == 'u':
+#             jump_height += 0.1
+#         elif key.char == 'm':
+#             jump_height -= 0.1
+#         elif key.char == '8':
+#             stop = True
+#             
+#         
+#         lin_x = np.clip(lin_x, -1.0, 2.0)
+#         lin_y = np.clip(lin_y, -0.5, 0.5)
+#         ang_z = np.clip(ang_z, -0.6, 0.6)
+#         base_height = np.clip(base_height, 0.1, 0.5)
+#         jump_height = np.clip(jump_height, 0.5, 1.5)
+#         
+#             
+#         # Clear the console
+#         os.system('clear')
+#         
+#         print(f"lin_x: {lin_x:.2f}, lin_y: {lin_y:.2f}, ang_z: {ang_z:.2f}, base_height: {base_height:.2f}, jump: {toggle_jump*jump_height:.2f}")
+#     except AttributeError:
+#         pass
 
-def on_release(key):
-    if key == keyboard.Key.esc:
-        # Stop listener
-        return False
+# def on_release(key):
+#     if key == keyboard.Key.esc:
+#         # Stop listener
+#         return False
 
 def main():
     global lin_x, lin_y, ang_z, base_height, toggle_jump, jump_height, stop
     parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--exp_name", type=str, default="go2-walking")
+    parser.add_argument("-e", "--exp_name", type=str, default="my_experiment")
     parser.add_argument("--ckpt", type=int, default=900)
     parser.add_argument("--save-data", type=bool, default=False)
     args = parser.parse_args()
@@ -93,7 +93,7 @@ def main():
         obs_cfg=obs_cfg,
         reward_cfg=reward_cfg,
         command_cfg=command_cfg,
-        show_viewer=True,
+        show_viewer=False,
         add_camera=True,
     )
     
@@ -109,14 +109,18 @@ def main():
     iter = 0
 
     # Start keyboard listener
-    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-    listener.start()
+    # listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+    # listener.start()
+    max_iter = 300
 
     reset_jump_toggle_iter = 0
     images_buffer = []
     commands_buffer = []
     with torch.no_grad():
-        while not stop:
+        # while not stop:
+        while True:
+            if iter % 30 == 0:
+                print(f"Iter: {iter}")
             
             # env.cam_0.set_pose(lookat=env.base_pos.cpu().numpy()[0],)
             # env.cam_0.set_pose(pos=env.base_pos.cpu().numpy()[0] + np.array([0.5, 0.0, 0.5]) * iter / 50, lookat=env.base_pos.cpu().numpy()[0],)
@@ -134,7 +138,6 @@ def main():
                     
             iter += 1
             
-            
             # Render the camera
             if env.cam_0 is not None:
                 rgb, _, _, _ = env.cam_0.render(
@@ -148,6 +151,9 @@ def main():
             
             if dones.any():
                 iter = 0
+            
+            if iter >= max_iter:
+                break
           
     if args.save_data:
         # save the images and commands

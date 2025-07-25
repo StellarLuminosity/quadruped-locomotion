@@ -185,7 +185,7 @@ This design ensures that the robot learns a balanced policy that prioritizes tra
 ### 3.4 Episode termination condition
 
 During training, episodes are terminated when specific criteria are met to ensure the robot remains in a healthy and functional state. The termination conditions include:
-
+ 
 - $| \textit{roll} | > \textit{roll}_{\textit{min}}$: Robot roll is below a certain threshold.  
 - $| \textit{pitch} | > \textit{pitch}_{\textit{min}}$: Robot pitch is below a certain threshold.  
 - $z < z_{\textit{min}}$: Robot altitude is above a minimum value.

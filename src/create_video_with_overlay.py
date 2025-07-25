@@ -3,11 +3,15 @@ import numpy as np
 import pickle
 
 def normalize_commands(commands_buffer):
-    max_lin_x = max(abs(cmd[0]) for cmd in commands_buffer)
-    max_lin_y = max(abs(cmd[1]) for cmd in commands_buffer)
-    max_ang_z = max(abs(cmd[2]) for cmd in commands_buffer)
-    max_base_height = max(abs(cmd[3]) for cmd in commands_buffer)
-    max_jump_height = max(abs(cmd[4]) for cmd in commands_buffer)
+    def safe_max(values):
+        m = max(abs(v) for v in values)
+        return m if m > 1e-6 else 1.0 
+    
+    max_lin_x = safe_max(abs(cmd[0]) for cmd in commands_buffer)
+    max_lin_y = safe_max(abs(cmd[1]) for cmd in commands_buffer)
+    max_ang_z = safe_max(abs(cmd[2]) for cmd in commands_buffer)
+    max_base_height = safe_max(abs(cmd[3]) for cmd in commands_buffer)
+    max_jump_height = safe_max(abs(cmd[4]) for cmd in commands_buffer)
     return max_lin_x, max_lin_y, max_ang_z, max_base_height, max_jump_height
 
 def draw_joystick(image, lin_x, lin_y, ang_z, base_height, jump_height, max_lin_x, max_lin_y, radius=100, x_offset=10, y_offset=10):
@@ -59,7 +63,11 @@ def draw_angular_velocity_bar(image, ang_z, max_ang_z, x_offset=10, y_offset=220
     cv2.rectangle(image, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (200, 200, 200), -1)
 
     # Draw the current angular velocity indicator
-    current_ang_pos = int(bar_x + (ang_z / max_ang_z + 1) / 2 * bar_width)  # Normalize ang_z to [0, 1]
+    # current_ang_pos = int(bar_x + (ang_z / max_ang_z + 1) / 2 * bar_width)  # Normalize ang_z to [0, 1]
+    safe_max_ang_z = max(max_ang_z, 1e-6)
+    normalized_ang = (ang_z / safe_max_ang_z + 1) / 2
+    current_ang_pos = int(bar_x + normalized_ang * bar_width)
+    
     cv2.rectangle(image, (bar_x, bar_y), (current_ang_pos, bar_y + bar_height), (0, 255, 0), -1)
 
     return image
