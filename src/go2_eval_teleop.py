@@ -10,23 +10,21 @@ import genesis as gs
 # from pynput import keyboard
 
 # Global variables to store command velocities
-lin_x = 0.0
-lin_y = 0.0
-ang_z = 0.0
-base_height = 0.3
-jump_height = 0.7
-toggle_jump = True # False
+motion_script = [
+    {"steps": 60, "command": [1.0, 0.0, 0.0, 0.3, 0.7]},  # Forward for 2 sec
+    {"steps": 60, "command": [0.0, 1.0, 0.0, 0.3, 0.7]},  # Left for 2 sec
+    {"steps": 60, "command": [0.0, -1.0, 0.0, 0.3, 0.7]}, # Right for 2 sec
+    {"steps": 60, "command": [-1.0, 0.0, 0.0, 0.3, 0.7]}, # Back for 2 sec
+    {"steps": 60, "command": [0.0, 0.0, 0.0, 0.3, 0.7]},  # Stand still
+]
+
+# lin_x = 0.0
+# lin_y = 0.0
+# ang_z = 0.0
+# base_height = 0.3
+# jump_height = 0.7
+# toggle_jump = True # False
 # stop = False
-
-
-def command_at(t):
-    lin_x = 1.0  # Constant forward
-    lin_y = 0.5 * math.sin(t * 0.2)  # Big left-right sway
-    ang_z = 0.5 * math.sin(t * 0.1)  # Noticeable turning
-    base_height = 0.3 + 0.1 * math.sin(t * 0.3)  # Up-down bounce
-    jump_height = 0.7 + 0.3 * math.sin(t * 0.25)  # Jump modulate
-    return lin_x, lin_y, ang_z, base_height, jump_height
-
 
 # def on_press(key):
 #     global lin_x, lin_y, ang_z, base_height, toggle_jump, jump_height, stop
@@ -114,12 +112,12 @@ def main():
     policy = runner.get_inference_policy(device="cuda:0")
 
     obs, _ = env.reset()
-    
     iter = 0
+    motion_index = 0
+    motion_step = 0
     
     # env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, toggle_jump*jump_height]]).to("cuda:0").repeat(num_envs, 1)
-    lin_x, lin_y, ang_z, base_height, jump_height = command_at(iter)
-    env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, jump_height]], dtype=torch.float).to("cuda:0").repeat(num_envs, 1)
+    # env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, jump_height]], dtype=torch.float).to("cuda:0").repeat(num_envs, 1)
 
     # Start keyboard listener
     # listener = keyboard.Listener(on_press=on_press, on_release=on_release)
@@ -140,6 +138,18 @@ def main():
                 
             actions = policy(obs)
             # print(f"toggle_jump: {toggle_jump}, jump_height: {jump_height}")
+            if motion_index < len(motion_script):
+                cmd = motion_script[motion_index]["command"]
+                lin_x, lin_y, ang_z, base_height, jump_height = cmd
+                toggle_jump = True  # or False if you want no jumping
+
+                motion_step += 1
+                if motion_step >= motion_script[motion_index]["steps"]:
+                    motion_index += 1
+                    motion_step = 0
+            else:
+                break 
+             
             env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, toggle_jump*jump_height]], dtype=torch.float).to("cuda:0").repeat(num_envs, 1)
             obs, _, rews, dones, infos = env.step(actions, is_train=False)
             # print(env.base_pos, env.base_lin_vel)
