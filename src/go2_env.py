@@ -707,45 +707,56 @@ class Go2Env:
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         return self.obs_buf, None
 
-    # ------------ reward functions----------------
+    # ------------ reward functions---------------- #
+
     def _reward_tracking_lin_vel(self):
-        """ Rewards robot for accurately following target linear velocities (forward/backward, left/right)
+        """ 
+            Rewards robot for accurately following target linear velocities (forward/backward, left/right)
             Exponential decay of reward based on squared error
-        """
+            Purpose: Encourage the robot to walk where it’s told, penalizing overshooting or lagging."""
         lin_vel_error = torch.sum(
             torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1
         )
         return torch.exp(-lin_vel_error / self.reward_cfg["tracking_sigma"])
 
     def _reward_tracking_ang_vel(self):
-        """ Tracking of angular velocity commands (yaw) """
+        """ 
+            Rewards robot for accurately following target angular velocities (yaw)
+            Exponential reward on angular velocity error.
+            Purpose: Encourage correct yaw rotation (turning) and support accurate turning commands."""
         ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
         return torch.exp(-ang_vel_error / self.reward_cfg["tracking_sigma"])
 
     def _reward_lin_vel_z(self):
-        """ Penalize z axis base linear velocity """
+        """ 
+            Penalize vertical velocity unless jumping.
+            Purpose: Keep robot grounded and stable when not jumping. """
         active_mask = (self.jump_toggled_buf < 0.01).float()
         return active_mask * torch.square(self.base_lin_vel[:, 2])
 
     def _reward_action_rate(self):
-        """ Penalizes rapid action changes to encourage smooth motion """
+        """ 
+            Penalize rapid changes in joint commands.
+            Computation: Squared difference between consecutive actions.
+            Purpose: Encourage smoother, more stable movement for real hardware compatibility."""
         active_mask = (self.jump_toggled_buf < 0.01).float()
         return active_mask * torch.sum(
             torch.square(self.last_actions - self.actions), dim=1
         )
 
     def _reward_similar_to_default(self):
-        """ Penalize joint poses far away from default pose """
+        """ Encourage joint poses close to default standing configuration.
+            Computation: L1 distance from default joint angles.
+            Purpose: Help avoid unstable or energetically inefficient poses."""
         active_mask = (self.jump_toggled_buf < 0.01).float()
         return active_mask * torch.sum(
             torch.abs(self.dof_pos - self.default_dof_pos), dim=1
         )
 
     def _reward_base_height(self):
-        """ Penalize base height away from target
-        Only applies height penalty when NOT jumping (active_mask). During jumps, height deviations are expected and aren't penalized.
-        """
-        # return torch.square(self.base_pos[:, 2] - self.reward_cfg["base_height_target"])
+        """ Maintain commanded body height.
+            Computation: Penalize squared error between current and commanded height, only if not jumping.
+            Purpose: Encourage the robot to maintain upright posture and respond to base-height commands."""
         active_mask = (self.jump_toggled_buf < 0.01).float()
         return active_mask * torch.square(self.base_pos[:, 2] - self.commands[:, 3])
 
@@ -790,7 +801,8 @@ class Go2Env:
     #     )
 
     def _reward_jump_height_tracking(self):
-        """Continuous reward for minimizing distance to target height during peak phase"""
+        """ Continuous reward for getting close to desired jump height during jump apex.
+            Active during middle third of the jump. """
         mask = (self.jump_toggled_buf >= 0.3 * self.reward_cfg["jump_reward_steps"]) & (
             self.jump_toggled_buf < 0.6 * self.reward_cfg["jump_reward_steps"]
         )
@@ -799,7 +811,7 @@ class Go2Env:
         return mask.float() * height_diff
 
     def _reward_jump_height_achievement(self):
-        """Binary reward for reaching close to target height during peak phase"""
+        """ Binary reward if height is within a small tolerance of the jump target."""
         mask = (self.jump_toggled_buf >= 0.3 * self.reward_cfg["jump_reward_steps"]) & (
             self.jump_toggled_buf < 0.6 * self.reward_cfg["jump_reward_steps"]
         )
@@ -808,14 +820,18 @@ class Go2Env:
         return mask.float() * binary_bonus
 
     def _reward_jump_speed(self):
-        """Reward for upward velocity during peak phase"""
+        """ Reward upward velocity near the peak of the jump. 
+            Computation: Exponential reward of vertical speed (encourages lift).
+            Purpose: Encourages the robot to actually jump upward with enough momentum."""
         mask = (self.jump_toggled_buf >= 0.3 * self.reward_cfg["jump_reward_steps"]) & (
             self.jump_toggled_buf < 0.6 * self.reward_cfg["jump_reward_steps"]
         )
         return mask.float() * torch.exp(self.base_lin_vel[:, 2]) * 0.2
 
     def _reward_jump_landing(self):
-        """Penalty for deviation from base height during landing"""
+        """Penalize deviation from base height after landing.
+            Computation: Negative squared error from base height.
+            Purpose: Encourages a graceful return to neutral stance."""
         mask = self.jump_toggled_buf >= 0.6 * self.reward_cfg["jump_reward_steps"]
         height_error = -torch.square(
             self.base_pos[:, 2] - self.reward_cfg["base_height_target"]
