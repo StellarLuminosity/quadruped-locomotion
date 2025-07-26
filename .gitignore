@@ -136,6 +136,7 @@ logs
 
 # Extra
 LICENSE
+.vs-code
 
 # Folders
 mujoco-3*
