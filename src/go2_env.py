@@ -61,7 +61,7 @@ class Go2Env:
         self.obs_scales = obs_cfg["obs_scales"]
         self.reward_scales = reward_cfg["reward_scales"]
 
-        # create scene
+        # create physics world
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
@@ -82,12 +82,10 @@ class Go2Env:
             show_viewer=show_viewer,
         )
 
-        # add plain
+        # world creation - ground plane
         self.scene.add_entity(gs.morphs.URDF(file="urdf/plane/plane.urdf", fixed=True))
 
-        # expected three here -
-
-        # add robot
+        # Go2 robot creation
         self.base_init_pos = torch.tensor(
             self.env_cfg["base_init_pos"], device=self.device
         )
@@ -103,7 +101,7 @@ class Go2Env:
             ),
         )
 
-        # self.cam_0 : gs.Camera = None
+        # Camera creation
         if add_camera:
             self.cam_0 = self.scene.add_camera(
                 res=(1920, 1080),
@@ -116,15 +114,15 @@ class Go2Env:
         # build
         self.scene.build(n_envs=num_envs, env_spacing=(1.0, 1.0))
 
-        # names to indices
+        # motor dof indices
         self.motor_dofs = [
             self.robot.get_joint(name).dof_idx_local
             for name in self.env_cfg["dof_names"]
         ]
 
         # PD control parameters
-        self.robot.set_dofs_kp([self.env_cfg["kp"]] * self.num_actions, self.motor_dofs)
-        self.robot.set_dofs_kv([self.env_cfg["kd"]] * self.num_actions, self.motor_dofs)
+        self.robot.set_dofs_kp([self.env_cfg["kp"]] * self.num_actions, self.motor_dofs) # Position gain
+        self.robot.set_dofs_kv([self.env_cfg["kd"]] * self.num_actions, self.motor_dofs) # Velocity gain
 
         # prepare reward functions and multiply reward scales by dt
         self.reward_functions, self.episode_sums = dict(), dict()
@@ -202,10 +200,29 @@ class Go2Env:
         self.extras = dict()  # extra information for logging
 
     def _resample_commands(self, envs_idx):
+        """
+        Resample and update the command vectors for the specified environments.
+
+        This function generates new target commands for each environment index in `envs_idx`,
+        simulating diverse and realistic locomotion goals for the robot during training.
+        The commands are sampled using a Gaussian distribution centered around the previous
+        action for each command dimension, with specified ranges and standard deviations.
+
+        Specifically, the following commands are resampled:
+            - Linear velocity in x (forward/backward)
+            - Linear velocity in y (left/right)
+            - Angular velocity (turning)
+            - Base height (vertical position of robot's body)
+            - Jump (set to 0.0 in this implementation)
+
+        After sampling, the linear and angular velocity commands are scaled proportionally
+        to the difference between the commanded height and the default target height. This
+        encourages the robot to move more cautiously when operating at non-default heights.
+        """
         # self.commands[envs_idx, 0] = gs_rand_float(*self.command_cfg["lin_vel_x_range"], (len(envs_idx),), self.device)
         # self.commands[envs_idx, 1] = gs_rand_float(*self.command_cfg["lin_vel_y_range"], (len(envs_idx),), self.device)
         # self.commands[envs_idx, 2] = gs_rand_float(*self.command_cfg["ang_vel_range"], (len(envs_idx),), self.device)
-        # self.commands[envs_idx, 0] =  gs_additive(self.last_actions[envs_idx, 0], self.command_cfg["lin_vel_x_range"][0] + (self.command_cfg["lin_vel_x_range"][1] - self.command_cfg["lin_vel_x_range"][0]) * torch.sin(2 * math.pi * self.episode_length_buf[envs_idx] / 300))
+        # self.commands[envs_idx, 0] = gs_additive(self.last_actions[envs_idx, 0], self.command_cfg["lin_vel_x_range"][0] + (self.command_cfg["lin_vel_x_range"][1] - self.command_cfg["lin_vel_x_range"][0]) * torch.sin(2 * math.pi * self.episode_length_buf[envs_idx] / 300))
         self.commands[envs_idx, 0] = gs_rand_gaussian(
             self.last_actions[envs_idx, 0],
             *self.command_cfg["lin_vel_x_range"],
@@ -265,7 +282,7 @@ class Go2Env:
         )
         self.commands[envs_idx, 4] = 0.0
 
-        # scale lin_vel and ang_vel proportionally to the height difference between the target and default height
+        # code automatically reduces velocity commands when height deviates from normal
         height_diff_scale = (
             0.5
             + abs(self.commands[envs_idx, 3] - self.reward_cfg["base_height_target"])
@@ -285,22 +302,27 @@ class Go2Env:
         )
 
     def step(self, actions, is_train=True):
+        # Clip actions to prevent extreme values
         self.actions = torch.clip(
             actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"]
         )
+        # Simulate real robot action latency & communication delay (1 timestep delay)
         exec_actions = (
             self.last_actions if self.simulate_action_latency else self.actions
         )
+        # Convert actions to joint positions - actions are offsets from neutral standing position
+        # Action Scaling: RL outputs are typically [-1,1], scaled to actual joint ranges
         target_dof_pos = (
             exec_actions * self.env_cfg["action_scale"] + self.default_dof_pos
         )
+        # Sends position commands to all 12 joints and advances timestep
         self.robot.control_dofs_position(target_dof_pos, self.motor_dofs)
         self.scene.step()
 
-        # update buffers
+        # State updates
         self.episode_length_buf += 1
-        self.base_pos[:] = self.robot.get_pos()
-        self.base_quat[:] = self.robot.get_quat()
+        self.base_pos[:] = self.robot.get_pos()    # Robot's 3D Position
+        self.base_quat[:] = self.robot.get_quat()  # Robot's orientation (quaternion)
         self.base_euler = quat_to_xyz(
             transform_quat_by_quat(
                 torch.ones_like(self.base_quat) * self.inv_base_init_quat,
@@ -308,13 +330,13 @@ class Go2Env:
             )
         )
         inv_base_quat = inv_quat(self.base_quat)
-        self.base_lin_vel[:] = transform_by_quat(self.robot.get_vel(), inv_base_quat)
-        self.base_ang_vel[:] = transform_by_quat(self.robot.get_ang(), inv_base_quat)
-        self.projected_gravity = transform_by_quat(self.global_gravity, inv_base_quat)
-        self.dof_pos[:] = self.robot.get_dofs_position(self.motor_dofs)
-        self.dof_vel[:] = self.robot.get_dofs_velocity(self.motor_dofs)
+        self.base_lin_vel[:] = transform_by_quat(self.robot.get_vel(), inv_base_quat)   # Linear velocity in robot frame
+        self.base_ang_vel[:] = transform_by_quat(self.robot.get_ang(), inv_base_quat)   # Angular velocity in robot frame
+        self.projected_gravity = transform_by_quat(self.global_gravity, inv_base_quat) 
+        self.dof_pos[:] = self.robot.get_dofs_position(self.motor_dofs)                 # Joint positions
+        self.dof_vel[:] = self.robot.get_dofs_velocity(self.motor_dofs)                 # Joint velocities
 
-        # resample commands, it is a variable that holds the indices of environments that need to be resampled or reset.
+        # Resample commands, it is a variable that holds the indices of environments that need to be resampled or reset.
         envs_idx = (
             (
                 self.episode_length_buf
@@ -327,9 +349,9 @@ class Go2Env:
         if is_train:
             # self._resample_commands(all_envs_idx)
             self._sample_commands(envs_idx)
-            # Idxs with probability of 5% to sample random commands
-            ranomd_idxs_1 = torch.randperm(self.num_envs)[: int(self.num_envs * 0.05)]
-            self._sample_commands(ranomd_idxs_1)
+            # Idxs with probability of 5% to sample random commands for exploration
+            random_idxs_1 = torch.randperm(self.num_envs)[: int(self.num_envs * 0.05)]
+            self._sample_commands(random_idxs_1)
 
             random_idxs_2 = torch.randperm(self.num_envs)[: int(self.num_envs * 0.05)]
             self._sample_jump_commands(random_idxs_2)
@@ -346,8 +368,7 @@ class Go2Env:
             jump_cmd_now > 0.0, self.commands[:, 4], self.jump_target_height
         )
 
-        # print(f'jump_toggled_buf: {self.jump_toggled_buf}, jump_target_height: {self.jump_target_height}, commands: {self.commands}')
-        # check termination and reset
+        # if robot falls, reset environment
         self.reset_buf = self.episode_length_buf > self.max_episode_length
         self.reset_buf |= (
             torch.abs(self.base_euler[:, 1])
@@ -358,6 +379,7 @@ class Go2Env:
             > self.env_cfg["termination_if_roll_greater_than"]
         )
 
+        # if robot exceeds max episode length, reset environment
         time_out_idx = (
             (self.episode_length_buf > self.max_episode_length)
             .nonzero(as_tuple=False)
@@ -370,14 +392,14 @@ class Go2Env:
 
         self.reset_idx(self.reset_buf.nonzero(as_tuple=False).flatten())
 
-        # compute reward
+        # Cals reward functions nad sums them up with appropriate weights
         self.rew_buf[:] = 0.0
         for name, reward_func in self.reward_functions.items():
             rew = reward_func() * self.reward_scales[name]
             self.rew_buf += rew
             self.episode_sums[name] += rew
 
-        # compute observations
+        # Compute observations
         self.obs_buf = torch.cat(
             [
                 self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
@@ -466,38 +488,43 @@ class Go2Env:
 
     # ------------ reward functions----------------
     def _reward_tracking_lin_vel(self):
-        # Tracking of linear velocity commands (xy axes)
+        """
+        Exponential reward function for tracking linear velocity commands (xy axes).
+        When velocity error increases, reward drops exponentially.
+        """
         lin_vel_error = torch.sum(
             torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1
         )
         return torch.exp(-lin_vel_error / self.reward_cfg["tracking_sigma"])
 
     def _reward_tracking_ang_vel(self):
-        # Tracking of angular velocity commands (yaw)
+        """ Tracking of angular velocity commands (yaw) """
         ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
         return torch.exp(-ang_vel_error / self.reward_cfg["tracking_sigma"])
 
     def _reward_lin_vel_z(self):
-        # Penalize z axis base linear velocity
+        """ Penalize z axis base linear velocity """
         active_mask = (self.jump_toggled_buf < 0.01).float()
         return active_mask * torch.square(self.base_lin_vel[:, 2])
 
     def _reward_action_rate(self):
-        # Penalize changes in actions
+        """ Penalizes rapid action changes to encourage smooth motion """
         active_mask = (self.jump_toggled_buf < 0.01).float()
         return active_mask * torch.sum(
             torch.square(self.last_actions - self.actions), dim=1
         )
 
     def _reward_similar_to_default(self):
-        # Penalize joint poses far away from default pose
+        """ Penalize joint poses far away from default pose """
         active_mask = (self.jump_toggled_buf < 0.01).float()
         return active_mask * torch.sum(
             torch.abs(self.dof_pos - self.default_dof_pos), dim=1
         )
 
     def _reward_base_height(self):
-        # Penalize base height away from target
+        """ Penalize base height away from target
+        Only applies height penalty when NOT jumping (active_mask). During jumps, height deviations are expected and aren't penalized.
+        """
         # return torch.square(self.base_pos[:, 2] - self.reward_cfg["base_height_target"])
         active_mask = (self.jump_toggled_buf < 0.01).float()
         return active_mask * torch.square(self.base_pos[:, 2] - self.commands[:, 3])

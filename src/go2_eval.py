@@ -1,3 +1,4 @@
+# Evaluation script for Go2 quadruped robot
 import argparse
 import os
 import pickle

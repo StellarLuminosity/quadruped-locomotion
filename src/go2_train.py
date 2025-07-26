@@ -1,4 +1,4 @@
-
+# Training script for Go2 quadruped robot
 import os 
 import argparse
 import pickle
@@ -10,7 +10,7 @@ import genesis as gs
 
 
 def get_train_cfg(exp_name, max_iterations):
-
+    # PPO Parameters
     train_cfg_dict = {
         "algorithm": {
             "clip_param": 0.2,
