@@ -3,6 +3,8 @@
 import random
 import torch
 import math
+import numpy as np
+from collections import deque
 import genesis as gs
 from genesis.utils.geom import (
     quat_to_xyz,
@@ -29,6 +31,196 @@ def gs_additive(base, increment):
     return base + increment
 
 
+class AdaptiveCurriculum:
+    """
+    Adaptive Curriculum Learning System for Quadruped Locomotion
+    
+    This system implements explicit curriculum stages that automatically adjust
+    reward weights based on training progress and performance metrics.
+    
+    The curriculum progresses through stages:
+    1. Stability Stage: Focus on balance and basic standing
+    2. Locomotion Stage: Learn basic walking and turning
+    3. Agility Stage: Master complex movements and jumping
+    4. Mastery Stage: Optimize for efficiency and robustness
+    """
+    
+    def __init__(self, reward_cfg, num_envs, device):
+        self.device = device
+        self.num_envs = num_envs
+        self.original_reward_cfg = reward_cfg.copy()
+        
+        # Curriculum stages and thresholds
+        self.current_stage = 0
+        self.stage_names = ["Stability", "Locomotion", "Agility", "Mastery"]
+        self.advancement_thresholds = [0.7, 0.8, 0.9]  # Success rates to advance
+        self.min_episodes_per_stage = [500, 1000, 1500]  # Minimum episodes before advancement
+        
+        # Performance tracking
+        self.episode_count = 0
+        self.stage_episode_count = 0
+        self.performance_history = deque(maxlen=100)  # Track last 100 episodes
+        self.reward_history = deque(maxlen=100)
+        self.success_history = deque(maxlen=100)
+        
+        # Stage-specific reward weights
+        self.stage_reward_weights = {
+            0: {  # Stability Stage - Focus on not falling
+                "tracking_lin_vel": 0.3,
+                "tracking_ang_vel": 0.1,
+                "lin_vel_z": -2.0,
+                "base_height": -100.0,  # Even higher penalty for falling
+                "action_rate": -0.01,
+                "similar_to_default": -0.2,
+                "jump_height_tracking": 0.0,
+                "jump_height_achievement": 0.0,
+                "jump_speed": 0.0,
+                "jump_landing": 0.0,
+            },
+            1: {  # Locomotion Stage - Learn basic walking
+                "tracking_lin_vel": 0.8,
+                "tracking_ang_vel": 0.3,
+                "lin_vel_z": -1.5,
+                "base_height": -75.0,
+                "action_rate": -0.008,
+                "similar_to_default": -0.15,
+                "jump_height_tracking": 0.0,
+                "jump_height_achievement": 0.0,
+                "jump_speed": 0.0,
+                "jump_landing": 0.0,
+            },
+            2: {  # Agility Stage - Add jumping and complex movements
+                "tracking_lin_vel": 1.0,
+                "tracking_ang_vel": 0.4,
+                "lin_vel_z": -1.0,
+                "base_height": -60.0,
+                "action_rate": -0.006,
+                "similar_to_default": -0.1,
+                "jump_height_tracking": 0.3,
+                "jump_height_achievement": 5.0,
+                "jump_speed": 0.5,
+                "jump_landing": 0.05,
+            },
+            3: {  # Mastery Stage - Original weights for final optimization
+                "tracking_lin_vel": 1.0,
+                "tracking_ang_vel": 0.2,
+                "lin_vel_z": -1.0,
+                "base_height": -50.0,
+                "action_rate": -0.005,
+                "similar_to_default": -0.1,
+                "jump_height_tracking": 0.5,
+                "jump_height_achievement": 10.0,
+                "jump_speed": 1.0,
+                "jump_landing": 0.08,
+            }
+        }
+        
+        # Metrics for curriculum advancement
+        self.reset_metrics()
+    
+    def reset_metrics(self):
+        """Reset performance metrics for the current stage"""
+        self.stage_episode_count = 0
+        self.stage_rewards = []
+        self.stage_successes = []
+    
+    def update_performance(self, episode_rewards, episode_lengths, reset_buf):
+        """
+        Update performance metrics and check for curriculum advancement
+        
+        Args:
+            episode_rewards: Tensor of episode rewards for each environment
+            episode_lengths: Tensor of episode lengths
+            reset_buf: Boolean tensor indicating which episodes ended
+        """
+        # Only process environments that completed episodes
+        completed_envs = reset_buf.nonzero(as_tuple=False).flatten()
+        
+        if len(completed_envs) > 0:
+            # Update episode count
+            self.episode_count += len(completed_envs)
+            self.stage_episode_count += len(completed_envs)
+            
+            # Calculate success metrics
+            for env_idx in completed_envs:
+                reward = episode_rewards[env_idx].item()
+                length = episode_lengths[env_idx].item()
+                
+                # Define success criteria based on current stage
+                success = self._evaluate_success(reward, length)
+                
+                # Update tracking
+                self.performance_history.append(reward)
+                self.reward_history.append(reward)
+                self.success_history.append(success)
+                self.stage_rewards.append(reward)
+                self.stage_successes.append(success)
+            
+            # Check for curriculum advancement
+            self._check_advancement()
+    
+    def _evaluate_success(self, reward, length):
+        """Evaluate if an episode was successful based on current stage criteria"""
+        if self.current_stage == 0:  # Stability
+            return reward > -10.0 and length > 800  # Didn't fall, lasted most of episode
+        elif self.current_stage == 1:  # Locomotion
+            return reward > 0.0 and length > 900  # Positive reward, good stability
+        elif self.current_stage == 2:  # Agility
+            return reward > 5.0 and length > 950  # Higher reward, very stable
+        else:  # Mastery
+            return reward > 10.0 and length > 980  # High performance
+    
+    def _check_advancement(self):
+        """Check if conditions are met to advance to next curriculum stage"""
+        if self.current_stage >= len(self.advancement_thresholds):
+            return  # Already at final stage
+        
+        # Need minimum episodes in current stage
+        if self.stage_episode_count < self.min_episodes_per_stage[self.current_stage]:
+            return
+        
+        # Need sufficient recent performance
+        if len(self.success_history) < 50:
+            return
+        
+        # Calculate recent success rate
+        recent_successes = list(self.success_history)[-50:]
+        success_rate = sum(recent_successes) / len(recent_successes)
+        
+        # Check advancement threshold
+        if success_rate >= self.advancement_thresholds[self.current_stage]:
+            self._advance_stage()
+    
+    def _advance_stage(self):
+        """Advance to the next curriculum stage"""
+        if self.current_stage < len(self.stage_names) - 1:
+            self.current_stage += 1
+            print(f"\n🎯 CURRICULUM ADVANCEMENT: Moving to {self.stage_names[self.current_stage]} Stage")
+            print(f"   Episodes completed: {self.episode_count}")
+            print(f"   Recent success rate: {sum(list(self.success_history)[-50:]) / 50:.2%}")
+            print(f"   New reward weights: {self.get_current_reward_weights()}\n")
+            self.reset_metrics()
+    
+    def get_current_reward_weights(self):
+        """Get reward weights for current curriculum stage"""
+        return self.stage_reward_weights[self.current_stage]
+    
+    def get_stage_info(self):
+        """Get information about current curriculum stage"""
+        return {
+            "stage": self.current_stage,
+            "stage_name": self.stage_names[self.current_stage],
+            "episode_count": self.episode_count,
+            "stage_episode_count": self.stage_episode_count,
+            "recent_success_rate": sum(list(self.success_history)[-min(50, len(self.success_history)):]) / max(1, min(50, len(self.success_history))),
+            "reward_weights": self.get_current_reward_weights()
+        }
+    
+    def should_use_adaptive_curriculum(self):
+        """Check if adaptive curriculum should be used (can be disabled for comparison)"""
+        return True  # Can be made configurable
+
+
 class Go2Env:
     def __init__(
         self,
@@ -40,6 +232,7 @@ class Go2Env:
         show_viewer=False,
         device="cuda",
         add_camera=False,
+        use_adaptive_curriculum=False,
     ):
         self.device = torch.device(device)
 
@@ -60,6 +253,17 @@ class Go2Env:
 
         self.obs_scales = obs_cfg["obs_scales"]
         self.reward_scales = reward_cfg["reward_scales"]
+        
+        # Initialize Adaptive Curriculum Learning System
+        self.use_adaptive_curriculum = use_adaptive_curriculum
+        if self.use_adaptive_curriculum:
+            self.adaptive_curriculum = AdaptiveCurriculum(reward_cfg, num_envs, device)
+            print(f"\nADAPTIVE CURRICULUM ENABLED")
+            print(f"   Starting Stage: {self.adaptive_curriculum.stage_names[0]}")
+            print(f"   Initial Reward Weights: {self.adaptive_curriculum.get_current_reward_weights()}\n")
+        else:
+            self.adaptive_curriculum = None
+            print("\nUSING ORIGINAL IMPLICIT CURRICULUM\n")
 
         # create physics world
         self.scene = gs.Scene(
@@ -392,12 +596,29 @@ class Go2Env:
 
         self.reset_idx(self.reset_buf.nonzero(as_tuple=False).flatten())
 
-        # Cals reward functions nad sums them up with appropriate weights
+        # Compute reward functions and sum them up with appropriate weights
+        # Use adaptive curriculum weights if enabled, otherwise use original weights
         self.rew_buf[:] = 0.0
+        current_reward_scales = self.reward_scales
+        
+        if self.use_adaptive_curriculum and self.adaptive_curriculum is not None:
+            # Get current curriculum stage reward weights
+            adaptive_weights = self.adaptive_curriculum.get_current_reward_weights()
+            current_reward_scales = adaptive_weights
+        
         for name, reward_func in self.reward_functions.items():
-            rew = reward_func() * self.reward_scales[name]
-            self.rew_buf += rew
-            self.episode_sums[name] += rew
+            if name in current_reward_scales:
+                rew = reward_func() * current_reward_scales[name]
+                self.rew_buf += rew
+                self.episode_sums[name] += rew
+        
+        # Update adaptive curriculum performance tracking
+        if self.use_adaptive_curriculum and self.adaptive_curriculum is not None and is_train:
+            self.adaptive_curriculum.update_performance(
+                self.episode_sums["tracking_lin_vel"] + self.episode_sums["tracking_ang_vel"],  # Episode rewards
+                self.episode_length_buf,  # Episode lengths
+                self.reset_buf  # Reset buffer indicating completed episodes
+            )
 
         # Compute observations
         self.obs_buf = torch.cat(
@@ -488,9 +709,8 @@ class Go2Env:
 
     # ------------ reward functions----------------
     def _reward_tracking_lin_vel(self):
-        """
-        Exponential reward function for tracking linear velocity commands (xy axes).
-        When velocity error increases, reward drops exponentially.
+        """ Rewards robot for accurately following target linear velocities (forward/backward, left/right)
+            Exponential decay of reward based on squared error
         """
         lin_vel_error = torch.sum(
             torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1
