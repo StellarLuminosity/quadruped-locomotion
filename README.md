@@ -131,3 +131,35 @@ Design Principles:
 - Markovian: Contains all info needed for decision-making
 - Normalized: All values scaled to similar ranges
 
+# NOtes about Curriculm Learning
+
+Curriculum learning is inspired by how humans learn - we start with simple concepts and gradually progress to more complex ones. In reinforcement learning, this means:
+1. Traditional RL: Agent learns all tasks simultaneously, which can be inefficient
+2. Curriculum Learning: Agent learns tasks in a structured progression from easy to hard
+
+The original code had an implicit curriculum that emerged naturally from:
+- Large penalties for instability (base height penalty of -50.0) forced the robot to learn balance first
+- Command resampling gradually exposed the robot to different velocities and behaviors
+- Reward magnitudes naturally prioritized stability over advanced locomotion
+
+The New System:
+1. AdaptiveCurriculum Class Design
+- Explicitly defines curriculum stages with clear progression
+
+The 4 Stages:
+- Stability: Learn basic balance and standing (high base_height penalty)
+- Locomotion: Master walking and turning (emphasize velocity tracking)
+- Agility: Add jumping and complex movements (introduce jump rewards)
+- Mastery: Optimize everything together (original balanced weights)
+
+2. Performance Tracking & Automatic Advancement
+- Data-driven: Progression based on actual performance, not arbitrary time
+- Adaptive: Each robot learns at its own pace
+- Robust: Requires both success rate AND minimum experience
+
+1. Structured Learning: Each stage builds on the previous one
+2. Automatic Adaptation: No manual tuning of when to advance
+3. Backward Compatible: Can be toggled on/off for comparison
+4. Performance-Based: Advancement based on actual learning progress
+
+
