@@ -101,7 +101,7 @@ class AdaptiveCurriculum:
                 "jump_speed": 0.5,
                 "jump_landing": 0.05,
             },
-            3: {  # Mastery Stage - Original weights for final optimization
+            3: {  # Mastery Stage - Weights for final optimization
                 "tracking_lin_vel": 1.0,
                 "tracking_ang_vel": 0.2,
                 "lin_vel_z": -1.0,
@@ -195,7 +195,7 @@ class AdaptiveCurriculum:
         """Advance to the next curriculum stage"""
         if self.current_stage < len(self.stage_names) - 1:
             self.current_stage += 1
-            print(f"\n🎯 CURRICULUM ADVANCEMENT: Moving to {self.stage_names[self.current_stage]} Stage")
+            print(f"\n CURRICULUM ADVANCEMENT: Moving to {self.stage_names[self.current_stage]} Stage")
             print(f"   Episodes completed: {self.episode_count}")
             print(f"   Recent success rate: {sum(list(self.success_history)[-50:]) / 50:.2%}")
             print(f"   New reward weights: {self.get_current_reward_weights()}\n")
@@ -218,7 +218,7 @@ class AdaptiveCurriculum:
     
     def should_use_adaptive_curriculum(self):
         """Check if adaptive curriculum should be used (can be disabled for comparison)"""
-        return True  # Can be made configurable
+        return True
 
 
 class Go2Env:
