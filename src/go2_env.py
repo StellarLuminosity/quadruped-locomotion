@@ -1,3 +1,5 @@
+# defines the robot's environment, physics and behaviour
+
 import random
 import torch
 import math
@@ -11,16 +13,19 @@ from genesis.utils.geom import (
 
 
 def gs_rand_float(lower, upper, shape, device):
+    """Generates random numbers for domain randomization. Adds variability to training (different starting positions, noise, etc.)"""
     return (upper - lower) * torch.rand(size=shape, device=device) + lower
 
 
 def gs_rand_gaussian(mean, min, max, n_std, shape, device):
+    """Generates gaussian-distributed random values for more realistic noise patterns for robot sensors/actuators"""
     mean_tensor = mean.expand(shape).to(device)
     std_tensor = torch.full(shape, (max - min) / 4.0 * n_std, device=device)
     return torch.clamp(torch.normal(mean_tensor, std_tensor), min, max)
 
 
 def gs_additive(base, increment):
+    """Adds incremental changes to base values for robot sensor/actuator noise"""
     return base + increment
 
 
@@ -38,15 +43,15 @@ class Go2Env:
     ):
         self.device = torch.device(device)
 
-        self.num_envs = num_envs
-        self.num_obs = obs_cfg["num_obs"]
-        self.num_privileged_obs = None
-        self.num_actions = env_cfg["num_actions"]
-        self.num_commands = command_cfg["num_commands"]
+        self.num_envs = num_envs                        # Number of parallel robot simulations (usually 4096)
+        self.num_obs = obs_cfg["num_obs"]               # Size of observation vector
+        self.num_privileged_obs = None                  
+        self.num_actions = env_cfg["num_actions"]       # Number of joint motors to control
+        self.num_commands = command_cfg["num_commands"] # Number of high-level commands [x_vel, y_vel, ang_vel, height, jump]
 
         self.simulate_action_latency = True  # there is a 1 step latency on real robot
         self.dt = 0.02  # control frequency on real robot is 50hz
-        self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.dt)
+        self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.dt) # 1000 = 20 seconds at 50Hz
 
         self.env_cfg = env_cfg
         self.obs_cfg = obs_cfg
