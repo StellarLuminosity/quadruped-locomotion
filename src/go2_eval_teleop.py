@@ -7,10 +7,11 @@ from rsl_rl.runners import OnPolicyRunner
 import numpy as np
 import math
 import genesis as gs
-# from pynput import keyboard
 
-# Global variables to store command velocities
-key_commands = [
+# Command vector format: [ lin_x, lin_y, ang_z, base_height, jump_height ]
+
+# Default hard-coded command sequence if no key sequence is provided
+default_key_commands = [
     [1.0, 0.0, 0.0, 0.3, 0.7],    # forward
     [0.0, 1.0, 0.0, 0.3, 0.7],    # left
     [0.0, -1.0, 0.0, 0.3, 0.7],   # right
@@ -18,8 +19,10 @@ key_commands = [
     [0.0, 0.0, 0.0, 0.3, 0.7],    # stop
 ]
 steps_per_transition = 60
+steps_per_key = 20  # How many steps to apply each keypress
 
 def interpolate_commands(commands, steps_per_transition):
+    """Smoothly interpolate between command waypoints"""
     result = []
     for i in range(len(commands) - 1):
         start = np.array(commands[i])
@@ -28,6 +31,79 @@ def interpolate_commands(commands, steps_per_transition):
             interp = (1 - alpha) * start + alpha * end
             result.append(interp.tolist())
     return result
+
+
+def process_keypress_sequence(keypresses, steps_per_key=20):
+    """
+    Generate robot commands from a sequence of keypresses
+    
+    Args:
+        keypresses: List of characters representing keyboard keys (e.g., ['w', 'a', 's', 'd', 'j'])
+        steps_per_key: Number of simulation steps to apply each key command
+        
+    Returns:
+        List of command vectors [lin_x, lin_y, ang_z, base_height, jump_height]
+    """
+    # Start with default values
+    lin_x = 0.0
+    lin_y = 0.0
+    ang_z = 0.0
+    base_height = 0.3
+    jump_height = 0.7
+    toggle_jump = False
+    commands = []
+    
+    # Process each keypress
+    for key in keypresses:
+        # Apply the same logic as the original on_press function
+        if key == 'w':
+            lin_x += 0.1
+        elif key == 's':
+            lin_x -= 0.1
+        elif key == 'a':
+            lin_y += 0.1
+        elif key == 'd':
+            lin_y -= 0.1
+        elif key == 'q':
+            ang_z += 0.1
+        elif key == 'e':
+            ang_z -= 0.1
+        elif key == 'r':
+            base_height += 0.1
+        elif key == 'f':
+            base_height -= 0.1
+        elif key == 'j':
+            toggle_jump = True
+        elif key == 'u':
+            jump_height += 0.1
+        elif key == 'm':
+            jump_height -= 0.1
+            
+        # Apply clipping to ensure values are in valid ranges
+        lin_x = np.clip(lin_x, -1.0, 2.0)
+        lin_y = np.clip(lin_y, -0.5, 0.5)
+        ang_z = np.clip(ang_z, -0.6, 0.6)
+        base_height = np.clip(base_height, 0.1, 0.5)
+        jump_height = np.clip(jump_height, 0.5, 1.5)
+        
+        # Create the command vector with the jump flag
+        jump_val = jump_height if toggle_jump else 0.0
+        cmd = [lin_x, lin_y, ang_z, base_height, jump_val]
+        
+        # Add the command multiple times based on steps_per_key
+        commands.extend([cmd] * steps_per_key)
+        
+        # Reset jump toggle after one command
+        toggle_jump = False
+        
+        # Print the current command for debugging
+        print(f"Key '{key}' → Command: [{lin_x:.2f}, {lin_y:.2f}, {ang_z:.2f}, {base_height:.2f}, {jump_val:.2f}]")
+    
+    # Always add a final stop command
+    if commands:
+        commands.append([0.0, 0.0, 0.0, base_height, 0.0])
+        
+    return commands
 
 # lin_x = 0.0
 # lin_y = 0.0
@@ -86,11 +162,14 @@ def interpolate_commands(commands, steps_per_transition):
 #         return False
 
 def main():
-    global lin_x, lin_y, ang_z, base_height, toggle_jump, jump_height, stop
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="my_experiment")
     parser.add_argument("--ckpt", type=int, default=900)
-    parser.add_argument("--save-data", type=bool, default=False)
+    parser.add_argument("--save-data", action="store_true", help="Save rendered images and commands")
+    parser.add_argument("--keys", type=str, help="Sequence of keyboard commands, e.g. 'wwasdjww'")
+    parser.add_argument("--keys-file", type=str, help="Path to a file containing keyboard commands, one per line")
+    parser.add_argument("--keys-steps", type=int, default=20, help="Steps per key command")
+    parser.add_argument("--use-default", action="store_true", help="Use default hardcoded command sequence")
     args = parser.parse_args()
 
     gs.init(
@@ -124,10 +203,29 @@ def main():
 
     obs, _ = env.reset()
     iter = 0
-    motion_index = 0
-    motion_step = 0
     
-    motion_commands = interpolate_commands(key_commands, steps_per_transition)
+    # Determine which command sequence to use
+    if args.keys:
+        # Convert string of keys to list of characters
+        keypress_sequence = list(args.keys)
+        print(f"\nUsing command sequence from --keys argument: {args.keys}")
+        motion_commands = process_keypress_sequence(keypress_sequence, args.keys_steps)
+    elif args.keys_file:
+        # Read keys from file, one character per line
+        with open(args.keys_file, 'r') as f:
+            keypress_sequence = [line.strip() for line in f if line.strip()]
+        print(f"\nLoaded {len(keypress_sequence)} commands from file: {args.keys_file}")
+        motion_commands = process_keypress_sequence(keypress_sequence, args.keys_steps)
+    elif args.use_default:
+        # Use the default hardcoded command sequence
+        print("\nUsing default hardcoded command sequence")
+        motion_commands = interpolate_commands(default_key_commands, steps_per_transition)
+    else:
+        # Provide a default example sequence
+        example_sequence = ['w', 'w', 'w', 'a', 'a', 'd', 'd', 'j', 's', 's']
+        print("\nNo command sequence provided. Using example sequence:")
+        print(" ".join(example_sequence))
+        motion_commands = process_keypress_sequence(example_sequence, args.keys_steps)
     
     # env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, toggle_jump*jump_height]]).to("cuda:0").repeat(num_envs, 1)
     # env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, jump_height]], dtype=torch.float).to("cuda:0").repeat(num_envs, 1)
@@ -197,6 +295,22 @@ if __name__ == "__main__":
     main()
 
 """
-# evaluation
-python examples/locomotion/go2_eval.py -e go2-walking -v --ckpt 100
+# Example usage:
+# Default example sequence:
+# python src/go2_eval_teleop.py -e my_experiment --ckpt 900
+#
+# Use inline key sequence:
+# python src/go2_eval_teleop.py -e my_experiment --ckpt 900 --keys "wwasdjwwddjj"
+#
+# Load keys from a file:
+# python src/go2_eval_teleop.py -e my_experiment --ckpt 900 --keys-file commands.txt
+#
+# Use default hardcoded sequence:
+# python src/go2_eval_teleop.py -e my_experiment --ckpt 900 --use-default
+#
+# Save video data:
+# python src/go2_eval_teleop.py -e my_experiment --ckpt 900 --keys "wwasdjj" --save-data
+# 
+# Original evaluation command:
+# python examples/locomotion/go2_eval.py -e go2-walking -v --ckpt 100
 """
