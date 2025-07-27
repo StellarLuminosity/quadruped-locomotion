@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import pickle
+import config
 
 def normalize_commands(commands_buffer):
     def safe_max(values):
