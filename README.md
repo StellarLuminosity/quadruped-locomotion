@@ -2,7 +2,7 @@
 
 This project implements a quadruped locomotion system using the Genesis physics engine and the RSL-RL framework.
 
-![Video](output_video.mp4)
+![Video](./output_video.mp4)
 
 ## Components
 Genesis provides realistic physics simulation
