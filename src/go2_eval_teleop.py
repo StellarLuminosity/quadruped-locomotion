@@ -105,7 +105,7 @@ def main():
 
     env_cfg["termination_if_roll_greater_than"] =  50  # degree
     env_cfg["termination_if_pitch_greater_than"] = 50  # degree
-    num_envs = 50
+    num_envs = 1
     env = Go2Env(
         num_envs=num_envs,
         env_cfg=env_cfg,
