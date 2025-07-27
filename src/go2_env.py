@@ -1,16 +1,9 @@
-<<<<<<< HEAD
-import random
-import torch
-import math
-=======
 # defines the robot's environment, physics and behaviour
-
 import random
 import torch
 import math
 import numpy as np
 from collections import deque
->>>>>>> origin/main
 import genesis as gs
 from genesis.utils.geom import (
     quat_to_xyz,
@@ -21,29 +14,18 @@ from genesis.utils.geom import (
 
 
 def gs_rand_float(lower, upper, shape, device):
-<<<<<<< HEAD
-=======
     """Generates random numbers for domain randomization. Adds variability to training (different starting positions, noise, etc.)"""
->>>>>>> origin/main
     return (upper - lower) * torch.rand(size=shape, device=device) + lower
 
 
 def gs_rand_gaussian(mean, min, max, n_std, shape, device):
-<<<<<<< HEAD
-=======
     """Generates gaussian-distributed random values for more realistic noise patterns for robot sensors/actuators"""
->>>>>>> origin/main
     mean_tensor = mean.expand(shape).to(device)
     std_tensor = torch.full(shape, (max - min) / 4.0 * n_std, device=device)
     return torch.clamp(torch.normal(mean_tensor, std_tensor), min, max)
 
 
 def gs_additive(base, increment):
-<<<<<<< HEAD
-    return base + increment
-
-
-=======
     """Adds incremental changes to base values for robot sensor/actuator noise"""
     return base + increment
 
@@ -238,7 +220,6 @@ class AdaptiveCurriculum:
         return True
 
 
->>>>>>> origin/main
 class Go2Env:
     def __init__(
         self,
@@ -250,20 +231,6 @@ class Go2Env:
         show_viewer=False,
         device="cuda",
         add_camera=False,
-<<<<<<< HEAD
-    ):
-        self.device = torch.device(device)
-
-        self.num_envs = num_envs
-        self.num_obs = obs_cfg["num_obs"]
-        self.num_privileged_obs = None
-        self.num_actions = env_cfg["num_actions"]
-        self.num_commands = command_cfg["num_commands"]
-
-        self.simulate_action_latency = True  # there is a 1 step latency on real robot
-        self.dt = 0.02  # control frequency on real robot is 50hz
-        self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.dt)
-=======
         use_adaptive_curriculum=False,
     ):
         self.device = torch.device(device)
@@ -277,7 +244,6 @@ class Go2Env:
         self.simulate_action_latency = True  # there is a 1 step latency on real robot
         self.dt = 0.02  # control frequency on real robot is 50hz
         self.max_episode_length = math.ceil(env_cfg["episode_length_s"] / self.dt) # 1000 = 20 seconds at 50Hz
->>>>>>> origin/main
 
         self.env_cfg = env_cfg
         self.obs_cfg = obs_cfg
@@ -286,10 +252,6 @@ class Go2Env:
 
         self.obs_scales = obs_cfg["obs_scales"]
         self.reward_scales = reward_cfg["reward_scales"]
-<<<<<<< HEAD
-
-        # create scene
-=======
         
         # Initialize Adaptive Curriculum Learning System
         self.use_adaptive_curriculum = use_adaptive_curriculum
@@ -303,7 +265,6 @@ class Go2Env:
             print("\nUSING ORIGINAL IMPLICIT CURRICULUM\n")
 
         # create physics world
->>>>>>> origin/main
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
@@ -324,19 +285,10 @@ class Go2Env:
             show_viewer=show_viewer,
         )
 
-<<<<<<< HEAD
-        # add plain
-        self.scene.add_entity(gs.morphs.URDF(file="urdf/plane/plane.urdf", fixed=True))
-
-        # expected three here -
-
-        # add robot
-=======
         # world creation - ground plane
         self.scene.add_entity(gs.morphs.URDF(file="urdf/plane/plane.urdf", fixed=True))
 
         # Go2 robot creation
->>>>>>> origin/main
         self.base_init_pos = torch.tensor(
             self.env_cfg["base_init_pos"], device=self.device
         )
@@ -352,11 +304,7 @@ class Go2Env:
             ),
         )
 
-<<<<<<< HEAD
-        # self.cam_0 : gs.Camera = None
-=======
         # Camera creation
->>>>>>> origin/main
         if add_camera:
             self.cam_0 = self.scene.add_camera(
                 res=(1920, 1080),
@@ -369,24 +317,15 @@ class Go2Env:
         # build
         self.scene.build(n_envs=num_envs, env_spacing=(1.0, 1.0))
 
-<<<<<<< HEAD
-        # names to indices
-=======
         # motor dof indices
->>>>>>> origin/main
         self.motor_dofs = [
             self.robot.get_joint(name).dof_idx_local
             for name in self.env_cfg["dof_names"]
         ]
 
         # PD control parameters
-<<<<<<< HEAD
-        self.robot.set_dofs_kp([self.env_cfg["kp"]] * self.num_actions, self.motor_dofs)
-        self.robot.set_dofs_kv([self.env_cfg["kd"]] * self.num_actions, self.motor_dofs)
-=======
         self.robot.set_dofs_kp([self.env_cfg["kp"]] * self.num_actions, self.motor_dofs) # Position gain
         self.robot.set_dofs_kv([self.env_cfg["kd"]] * self.num_actions, self.motor_dofs) # Velocity gain
->>>>>>> origin/main
 
         # prepare reward functions and multiply reward scales by dt
         self.reward_functions, self.episode_sums = dict(), dict()
@@ -464,12 +403,6 @@ class Go2Env:
         self.extras = dict()  # extra information for logging
 
     def _resample_commands(self, envs_idx):
-<<<<<<< HEAD
-        # self.commands[envs_idx, 0] = gs_rand_float(*self.command_cfg["lin_vel_x_range"], (len(envs_idx),), self.device)
-        # self.commands[envs_idx, 1] = gs_rand_float(*self.command_cfg["lin_vel_y_range"], (len(envs_idx),), self.device)
-        # self.commands[envs_idx, 2] = gs_rand_float(*self.command_cfg["ang_vel_range"], (len(envs_idx),), self.device)
-        # self.commands[envs_idx, 0] =  gs_additive(self.last_actions[envs_idx, 0], self.command_cfg["lin_vel_x_range"][0] + (self.command_cfg["lin_vel_x_range"][1] - self.command_cfg["lin_vel_x_range"][0]) * torch.sin(2 * math.pi * self.episode_length_buf[envs_idx] / 300))
-=======
         """
         Resample and update the command vectors for the specified environments.
 
@@ -493,7 +426,6 @@ class Go2Env:
         # self.commands[envs_idx, 1] = gs_rand_float(*self.command_cfg["lin_vel_y_range"], (len(envs_idx),), self.device)
         # self.commands[envs_idx, 2] = gs_rand_float(*self.command_cfg["ang_vel_range"], (len(envs_idx),), self.device)
         # self.commands[envs_idx, 0] = gs_additive(self.last_actions[envs_idx, 0], self.command_cfg["lin_vel_x_range"][0] + (self.command_cfg["lin_vel_x_range"][1] - self.command_cfg["lin_vel_x_range"][0]) * torch.sin(2 * math.pi * self.episode_length_buf[envs_idx] / 300))
->>>>>>> origin/main
         self.commands[envs_idx, 0] = gs_rand_gaussian(
             self.last_actions[envs_idx, 0],
             *self.command_cfg["lin_vel_x_range"],
@@ -553,11 +485,7 @@ class Go2Env:
         )
         self.commands[envs_idx, 4] = 0.0
 
-<<<<<<< HEAD
-        # scale lin_vel and ang_vel proportionally to the height difference between the target and default height
-=======
         # code automatically reduces velocity commands when height deviates from normal
->>>>>>> origin/main
         height_diff_scale = (
             0.5
             + abs(self.commands[envs_idx, 3] - self.reward_cfg["base_height_target"])
@@ -577,24 +505,6 @@ class Go2Env:
         )
 
     def step(self, actions, is_train=True):
-<<<<<<< HEAD
-        self.actions = torch.clip(
-            actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"]
-        )
-        exec_actions = (
-            self.last_actions if self.simulate_action_latency else self.actions
-        )
-        target_dof_pos = (
-            exec_actions * self.env_cfg["action_scale"] + self.default_dof_pos
-        )
-        self.robot.control_dofs_position(target_dof_pos, self.motor_dofs)
-        self.scene.step()
-
-        # update buffers
-        self.episode_length_buf += 1
-        self.base_pos[:] = self.robot.get_pos()
-        self.base_quat[:] = self.robot.get_quat()
-=======
         # Clip actions to prevent extreme values
         self.actions = torch.clip(
             actions, -self.env_cfg["clip_actions"], self.env_cfg["clip_actions"]
@@ -616,7 +526,6 @@ class Go2Env:
         self.episode_length_buf += 1
         self.base_pos[:] = self.robot.get_pos()    # Robot's 3D Position
         self.base_quat[:] = self.robot.get_quat()  # Robot's orientation (quaternion)
->>>>>>> origin/main
         self.base_euler = quat_to_xyz(
             transform_quat_by_quat(
                 torch.ones_like(self.base_quat) * self.inv_base_init_quat,
@@ -624,15 +533,6 @@ class Go2Env:
             )
         )
         inv_base_quat = inv_quat(self.base_quat)
-<<<<<<< HEAD
-        self.base_lin_vel[:] = transform_by_quat(self.robot.get_vel(), inv_base_quat)
-        self.base_ang_vel[:] = transform_by_quat(self.robot.get_ang(), inv_base_quat)
-        self.projected_gravity = transform_by_quat(self.global_gravity, inv_base_quat)
-        self.dof_pos[:] = self.robot.get_dofs_position(self.motor_dofs)
-        self.dof_vel[:] = self.robot.get_dofs_velocity(self.motor_dofs)
-
-        # resample commands, it is a variable that holds the indices of environments that need to be resampled or reset.
-=======
         self.base_lin_vel[:] = transform_by_quat(self.robot.get_vel(), inv_base_quat)   # Linear velocity in robot frame
         self.base_ang_vel[:] = transform_by_quat(self.robot.get_ang(), inv_base_quat)   # Angular velocity in robot frame
         self.projected_gravity = transform_by_quat(self.global_gravity, inv_base_quat) 
@@ -640,7 +540,6 @@ class Go2Env:
         self.dof_vel[:] = self.robot.get_dofs_velocity(self.motor_dofs)                 # Joint velocities
 
         # Resample commands, it is a variable that holds the indices of environments that need to be resampled or reset.
->>>>>>> origin/main
         envs_idx = (
             (
                 self.episode_length_buf
@@ -653,15 +552,9 @@ class Go2Env:
         if is_train:
             # self._resample_commands(all_envs_idx)
             self._sample_commands(envs_idx)
-<<<<<<< HEAD
-            # Idxs with probability of 5% to sample random commands
-            ranomd_idxs_1 = torch.randperm(self.num_envs)[: int(self.num_envs * 0.05)]
-            self._sample_commands(ranomd_idxs_1)
-=======
             # Idxs with probability of 5% to sample random commands for exploration
             random_idxs_1 = torch.randperm(self.num_envs)[: int(self.num_envs * 0.05)]
             self._sample_commands(random_idxs_1)
->>>>>>> origin/main
 
             random_idxs_2 = torch.randperm(self.num_envs)[: int(self.num_envs * 0.05)]
             self._sample_jump_commands(random_idxs_2)
@@ -678,12 +571,7 @@ class Go2Env:
             jump_cmd_now > 0.0, self.commands[:, 4], self.jump_target_height
         )
 
-<<<<<<< HEAD
-        # print(f'jump_toggled_buf: {self.jump_toggled_buf}, jump_target_height: {self.jump_target_height}, commands: {self.commands}')
-        # check termination and reset
-=======
         # if robot falls, reset environment
->>>>>>> origin/main
         self.reset_buf = self.episode_length_buf > self.max_episode_length
         self.reset_buf |= (
             torch.abs(self.base_euler[:, 1])
@@ -694,10 +582,7 @@ class Go2Env:
             > self.env_cfg["termination_if_roll_greater_than"]
         )
 
-<<<<<<< HEAD
-=======
         # if robot exceeds max episode length, reset environment
->>>>>>> origin/main
         time_out_idx = (
             (self.episode_length_buf > self.max_episode_length)
             .nonzero(as_tuple=False)
@@ -710,16 +595,6 @@ class Go2Env:
 
         self.reset_idx(self.reset_buf.nonzero(as_tuple=False).flatten())
 
-<<<<<<< HEAD
-        # compute reward
-        self.rew_buf[:] = 0.0
-        for name, reward_func in self.reward_functions.items():
-            rew = reward_func() * self.reward_scales[name]
-            self.rew_buf += rew
-            self.episode_sums[name] += rew
-
-        # compute observations
-=======
         # Compute reward functions and sum them up with appropriate weights
         # Use adaptive curriculum weights if enabled, otherwise use original weights
         self.rew_buf[:] = 0.0
@@ -745,7 +620,6 @@ class Go2Env:
             )
 
         # Compute observations
->>>>>>> origin/main
         self.obs_buf = torch.cat(
             [
                 self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
@@ -832,11 +706,6 @@ class Go2Env:
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         return self.obs_buf, None
 
-<<<<<<< HEAD
-    # ------------ reward functions----------------
-    def _reward_tracking_lin_vel(self):
-        # Tracking of linear velocity commands (xy axes)
-=======
     # ------------ reward functions---------------- #
 
     def _reward_tracking_lin_vel(self):
@@ -844,71 +713,49 @@ class Go2Env:
             Rewards robot for accurately following target linear velocities (forward/backward, left/right)
             Exponential decay of reward based on squared error
             Purpose: Encourage the robot to walk where it’s told, penalizing overshooting or lagging."""
->>>>>>> origin/main
         lin_vel_error = torch.sum(
             torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1
         )
         return torch.exp(-lin_vel_error / self.reward_cfg["tracking_sigma"])
 
     def _reward_tracking_ang_vel(self):
-<<<<<<< HEAD
-        # Tracking of angular velocity commands (yaw)
-=======
         """ 
             Rewards robot for accurately following target angular velocities (yaw)
             Exponential reward on angular velocity error.
             Purpose: Encourage correct yaw rotation (turning) and support accurate turning commands."""
->>>>>>> origin/main
         ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
         return torch.exp(-ang_vel_error / self.reward_cfg["tracking_sigma"])
 
     def _reward_lin_vel_z(self):
-<<<<<<< HEAD
-        # Penalize z axis base linear velocity
-=======
         """ 
             Penalize vertical velocity unless jumping.
             Purpose: Keep robot grounded and stable when not jumping. """
->>>>>>> origin/main
         active_mask = (self.jump_toggled_buf < 0.01).float()
         return active_mask * torch.square(self.base_lin_vel[:, 2])
 
     def _reward_action_rate(self):
-<<<<<<< HEAD
-        # Penalize changes in actions
-=======
         """ 
             Penalize rapid changes in joint commands.
             Computation: Squared difference between consecutive actions.
             Purpose: Encourage smoother, more stable movement for real hardware compatibility."""
->>>>>>> origin/main
         active_mask = (self.jump_toggled_buf < 0.01).float()
         return active_mask * torch.sum(
             torch.square(self.last_actions - self.actions), dim=1
         )
 
     def _reward_similar_to_default(self):
-<<<<<<< HEAD
-        # Penalize joint poses far away from default pose
-=======
         """ Encourage joint poses close to default standing configuration.
             Computation: L1 distance from default joint angles.
             Purpose: Help avoid unstable or energetically inefficient poses."""
->>>>>>> origin/main
         active_mask = (self.jump_toggled_buf < 0.01).float()
         return active_mask * torch.sum(
             torch.abs(self.dof_pos - self.default_dof_pos), dim=1
         )
 
     def _reward_base_height(self):
-<<<<<<< HEAD
-        # Penalize base height away from target
-        # return torch.square(self.base_pos[:, 2] - self.reward_cfg["base_height_target"])
-=======
         """ Maintain commanded body height.
             Computation: Penalize squared error between current and commanded height, only if not jumping.
             Purpose: Encourage the robot to maintain upright posture and respond to base-height commands."""
->>>>>>> origin/main
         active_mask = (self.jump_toggled_buf < 0.01).float()
         return active_mask * torch.square(self.base_pos[:, 2] - self.commands[:, 3])
 
@@ -953,12 +800,8 @@ class Go2Env:
     #     )
 
     def _reward_jump_height_tracking(self):
-<<<<<<< HEAD
-        """Continuous reward for minimizing distance to target height during peak phase"""
-=======
         """ Continuous reward for getting close to desired jump height during jump apex.
             Active during middle third of the jump. """
->>>>>>> origin/main
         mask = (self.jump_toggled_buf >= 0.3 * self.reward_cfg["jump_reward_steps"]) & (
             self.jump_toggled_buf < 0.6 * self.reward_cfg["jump_reward_steps"]
         )
@@ -967,11 +810,7 @@ class Go2Env:
         return mask.float() * height_diff
 
     def _reward_jump_height_achievement(self):
-<<<<<<< HEAD
-        """Binary reward for reaching close to target height during peak phase"""
-=======
         """ Binary reward if height is within a small tolerance of the jump target."""
->>>>>>> origin/main
         mask = (self.jump_toggled_buf >= 0.3 * self.reward_cfg["jump_reward_steps"]) & (
             self.jump_toggled_buf < 0.6 * self.reward_cfg["jump_reward_steps"]
         )
@@ -980,26 +819,18 @@ class Go2Env:
         return mask.float() * binary_bonus
 
     def _reward_jump_speed(self):
-<<<<<<< HEAD
-        """Reward for upward velocity during peak phase"""
-=======
         """ Reward upward velocity near the peak of the jump. 
             Computation: Exponential reward of vertical speed (encourages lift).
             Purpose: Encourages the robot to actually jump upward with enough momentum."""
->>>>>>> origin/main
         mask = (self.jump_toggled_buf >= 0.3 * self.reward_cfg["jump_reward_steps"]) & (
             self.jump_toggled_buf < 0.6 * self.reward_cfg["jump_reward_steps"]
         )
         return mask.float() * torch.exp(self.base_lin_vel[:, 2]) * 0.2
 
     def _reward_jump_landing(self):
-<<<<<<< HEAD
-        """Penalty for deviation from base height during landing"""
-=======
         """Penalize deviation from base height after landing.
             Computation: Negative squared error from base height.
             Purpose: Encourages a graceful return to neutral stance."""
->>>>>>> origin/main
         mask = self.jump_toggled_buf >= 0.6 * self.reward_cfg["jump_reward_steps"]
         height_error = -torch.square(
             self.base_pos[:, 2] - self.reward_cfg["base_height_target"]

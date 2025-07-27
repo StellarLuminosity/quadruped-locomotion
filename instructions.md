@@ -1,10 +1,6 @@
 # Quadrupeds Locomotion
 
-<<<<<<< HEAD
-A reinforcement learning project for robot locomotion using RSL-RL framework.
-=======
 A reinforcement learning project for quadruped robot locomotion using RSL-RL framework.
->>>>>>> origin/main
 
 ## Setup
 
