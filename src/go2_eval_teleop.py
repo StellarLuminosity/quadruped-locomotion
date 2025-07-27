@@ -9,13 +9,12 @@ Key features
 ------------
 1. Replays a key-sequence (e.g. "wwasdj...") or a default pattern.
 2. Feeds those commands into the Go2 environment + trained policy.
-3. Records RGB frames and command vectors when --save-data is given.
+3. Records RGB frames and command vectors.
 4. Generates an MP4 with joystick / height / angular-velocity overlays.
 
 Example usage
 -------------
-python src/go2_eval_teleop.py -e my_experiment --ckpt 900 \
-    --keys "wwasdj" --save-data
+python src/go2_eval_teleop.py -e my_experiment --ckpt 900 --keys "wwasdj"
 """
 
 # --------------------------- Imports ---------------------------
@@ -170,7 +169,6 @@ def create_video_with_overlay(images_buffer, commands_buffer, output_path, fps=3
         out.write(cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR))
 
     out.release()
-    print(f"Video saved to {output_path}")
 
 # ---------------------------- Main Routine ----------------------------
 
@@ -181,7 +179,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="my_experiment")
     parser.add_argument("--ckpt", type=int, default=900)
-    parser.add_argument("--save-data", action="store_true", default=True, help="Save rendered images and commands")
     parser.add_argument("--keys", type=str, default="wwasdjwwddjj", help="Sequence of keyboard commands, e.g. 'wwasdjww'")
     args = parser.parse_args()
 
@@ -279,10 +276,8 @@ def main():
                     depth=False,
                     segmentation=False,
                 )
-                if args.save_data:
-                    images_buffer.append(rgb)
-                    # commands_buffer.append([lin_x, lin_y, ang_z, base_height, toggle_jump*jump_height])
-                    commands_buffer.append([lin_x, lin_y, ang_z, base_height, jump_height])
+                images_buffer.append(rgb)
+                commands_buffer.append([lin_x, lin_y, ang_z, base_height, jump_height])
             
             # -------------------------------
             # Check for termination
@@ -291,17 +286,21 @@ def main():
                 iter = 0
             
             iter += 1
-          
-    if args.save_data:
-        # save the images and commands
-        images_buffer = np.array(images_buffer)
-        commands_buffer = np.array(commands_buffer)
-        pickle.dump(images_buffer, open("images_buffer.pkl", "wb"))
-        pickle.dump(commands_buffer, open("commands_buffer.pkl", "wb"))
 
-        # Automatically create video
-        output_video_path = getattr(config, "output_video_path", "output.mp4")
-        create_video_with_overlay(images_buffer, commands_buffer, output_video_path, fps=30)
+    # -------------------------------
+    # Save the images and commands
+    # -------------------------------
+    images_buffer = np.array(images_buffer)
+    commands_buffer = np.array(commands_buffer)
+    pickle.dump(images_buffer, open("images_buffer.pkl", "wb"))
+    pickle.dump(commands_buffer, open("commands_buffer.pkl", "wb"))
+
+    # -------------------------------
+    # Render video
+    # -------------------------------
+    output_video_path = getattr(config, "output_video_path", "output.mp4")
+    create_video_with_overlay(images_buffer, commands_buffer, output_video_path, fps=30)
+    print(f"Video saved to {output_video_path}")
 
 if __name__ == "__main__":
     main()
