@@ -1,8 +1,6 @@
 import cv2
 import numpy as np
 import pickle
-import sys
-sys.path.append("..")
 import config
 
 def normalize_commands(commands_buffer):
