@@ -164,3 +164,13 @@ The 4 Stages:
 2. Automatic Adaptation: No manual tuning of when to advance
 3. Backward Compatible: Can be toggled on/off for comparison
 4. Performance-Based: Advancement based on actual learning progress
+
+#### Commands
+Every command is a list of 5 values:
+```python
+self.commands[env_idx, 0] = lin_vel_x    # forward (positive) / backward (negative) linear velocity (m/s) (-1.0 to 2.0 m/s)
+self.commands[env_idx, 1] = lin_vel_y    # left (positive) / right (negative) lateral velocity (m/s)(-0.5 to 0.5 m/s)  
+self.commands[env_idx, 2] = ang_vel      # Turning velocity (-0.6 to 0.6 rad/s)
+self.commands[env_idx, 3] = height       # Base height (0.2 to 0.4 m)
+self.commands[env_idx, 4] = jump         # Jump height (0.5 to 1.5 m)
+```
