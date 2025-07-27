@@ -140,10 +140,17 @@ def _draw_joystick(img, lin_x, lin_y, max_lin_x, max_lin_y, radius=100, x_offset
     cv2.circle(img, (jx + 2, jy + 2), int(radius * 0.12), (0, 0, 0), -1)
     return img
 
-def _draw_height_bar(img, base_h, max_base_h, x_offset=220, y_offset=10, bar_h=200, bar_w=20):
+def _draw_height_bar(img, base_h, max_base_h, target_h=None, x_offset=220, y_offset=10, bar_h=200, bar_w=20):
+    """Draw vertical bar showing current and target base height."""
+    # Background
     cv2.rectangle(img, (x_offset, y_offset), (x_offset + bar_w, y_offset + bar_h), (200, 200, 200), -1)
+    # Current height indicator (green)
     cur_pos = int(y_offset + bar_h - (base_h / max_base_h) * bar_h)
     cv2.rectangle(img, (x_offset, cur_pos), (x_offset + bar_w, y_offset + bar_h), (0, 255, 0), -1)
+    # Target height line (red)
+    if target_h is not None:
+        target_pos = int(y_offset + bar_h - (target_h / max_base_h) * bar_h)
+        cv2.line(img, (x_offset, target_pos), (x_offset + bar_w, target_pos), (0, 0, 255), 2)
     return img
 
 def _draw_ang_vel_bar(img, ang_z, max_ang_z, x_offset=10, y_offset=220, bar_w=200, bar_h=20):
@@ -166,7 +173,7 @@ def create_video_with_overlay(images_buffer, commands_buffer, output_path, fps=3
         x_offset = w // 2 - 100
         y_offset = h - 250
         canvas = _draw_joystick(img.copy(), lin_x, lin_y, max_lin_x, max_lin_y, radius, x_offset, y_offset)
-        canvas = _draw_height_bar(canvas, base_h, max_base_h, x_offset + radius*2 + 10, y_offset)
+        canvas = _draw_height_bar(canvas, base_h, max_base_h, target_h=max_base_h*0.5, x_offset=x_offset + radius*2 + 10, y_offset=y_offset)
         canvas = _draw_ang_vel_bar(canvas, ang_z, max_ang_z, x_offset, y_offset + radius*2 + 20)
         out.write(cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR))
 
