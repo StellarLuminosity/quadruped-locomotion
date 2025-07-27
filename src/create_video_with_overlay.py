@@ -117,7 +117,7 @@ images_buffer = pickle.load(open("images_buffer.pkl", "rb"))
 commands_buffer = pickle.load(open("commands_buffer.pkl", "rb"))
 
 # Create the video with the joystick overlay and target height bar
-output_video_path = "output_video.mp4"
+output_video_path = config.output_video_path
 create_video_with_overlay(images_buffer, commands_buffer, output_video_path, fps=30)
 
 print(f"Video saved to {output_video_path}")

@@ -1,0 +1,1 @@
+output_video_path = "curriculum_learning.mp4"
