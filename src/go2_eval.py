@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+# Evaluation script for Go2 quadruped robot
+>>>>>>> origin/main
 import argparse
 import os
 import pickle

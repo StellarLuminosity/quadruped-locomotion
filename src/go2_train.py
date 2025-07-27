@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 
+=======
+# Training script for Go2 quadruped robot
+>>>>>>> origin/main
 import os 
 import argparse
 import pickle
@@ -10,7 +14,11 @@ import genesis as gs
 
 
 def get_train_cfg(exp_name, max_iterations):
+<<<<<<< HEAD
 
+=======
+    # PPO Parameters
+>>>>>>> origin/main
     train_cfg_dict = {
         "algorithm": {
             "clip_param": 0.2,
@@ -153,6 +161,11 @@ def main():
     parser.add_argument("-B", "--num_envs", type=int, default=4096)
     parser.add_argument("--max_iterations", type=int, default=10000)
     parser.add_argument("--device", type=str, default="cuda:0", help="device to use: 'cpu' or 'cuda:0'")
+<<<<<<< HEAD
+=======
+    parser.add_argument("--adaptive_curriculum", action="store_true", 
+                       help="Enable adaptive curriculum learning with explicit stages")
+>>>>>>> origin/main
     args = parser.parse_args()
 
     backend = gs.constants.backend.gpu if args.device.lower() == "cuda:0" else gs.constants.backend.cpu
@@ -166,6 +179,10 @@ def main():
         shutil.rmtree(log_dir)
     os.makedirs(log_dir, exist_ok=True)
 
+<<<<<<< HEAD
+=======
+    # Create environment with optional adaptive curriculum
+>>>>>>> origin/main
     env = Go2Env(
         num_envs=args.num_envs,
         env_cfg=env_cfg,
@@ -173,7 +190,24 @@ def main():
         reward_cfg=reward_cfg,
         command_cfg=command_cfg,
         device=args.device,
+<<<<<<< HEAD
     )
+=======
+        use_adaptive_curriculum=args.adaptive_curriculum,
+    )
+    
+    # Print curriculum information
+    if args.adaptive_curriculum:
+        print(f"\n TRAINING WITH ADAPTIVE CURRICULUM")
+        print(f"   Experiment: {args.exp_name}")
+        print(f"   Environments: {args.num_envs}")
+        print(f"   Max Iterations: {args.max_iterations}")
+    else:
+        print(f"\n TRAINING WITH ORIGINAL IMPLICIT CURRICULUM")
+        print(f"   Experiment: {args.exp_name}")
+        print(f"   Environments: {args.num_envs}")
+        print(f"   Max Iterations: {args.max_iterations}")
+>>>>>>> origin/main
 
     runner = OnPolicyRunner(env, train_cfg, log_dir, device=args.device)
 
