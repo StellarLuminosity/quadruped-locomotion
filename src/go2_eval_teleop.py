@@ -1,4 +1,24 @@
-# Teleoperation script for the quadruped robot
+"""
+go2_eval_teleop.py
+
+Evaluate a trained Go2 quadruped policy with a scripted sequence of
+keyboard commands (headless-friendly) and optionally record images &
+command data to immediately create an annotated video.
+
+Key features
+------------
+1. Replays a key-sequence (e.g. "wwasdj...") or a default pattern.
+2. Feeds those commands into the Go2 environment + trained policy.
+3. Records RGB frames and command vectors when --save-data is given.
+4. Generates an MP4 with joystick / height / angular-velocity overlays.
+
+Example usage
+-------------
+python src/go2_eval_teleop.py -e my_experiment --ckpt 900 \
+    --keys "wwasdj" --save-data
+"""
+
+# --------------------------- Imports ---------------------------
 
 import argparse
 import os
@@ -12,34 +32,9 @@ import math
 import genesis as gs
 import config
 
-# Command vector format: [ lin_x, lin_y, ang_z, base_height, jump_height ]
+# ---------------------- Command Sequence Helpers ----------------------
 
-default_key_commands = [
-    [1.0, 0.0, 0.0, 0.3, 0.7],    # forward
-    [0.0, 1.0, 0.0, 0.3, 0.7],    # left
-    [0.0, -1.0, 0.0, 0.3, 0.7],   # right
-    [-1.0, 0.0, 0.0, 0.3, 0.7],   # backward
-    [0.0, 0.0, 0.0, 0.3, 0.7],    # stop
-]
-
-key_commands = ['w', 'w', 'a', 'a', 'a']
-
-steps_per_transition = 60 # Number of steps to interpolate between command waypoints
-steps_per_key = 20  # Number of steps to apply each keypress
-
-def interpolate_commands(commands, steps_per_transition):
-    """Smoothly interpolate between command waypoints"""
-    result = []
-    for i in range(len(commands) - 1):
-        start = np.array(commands[i])
-        end = np.array(commands[i + 1])
-        for alpha in np.linspace(0, 1, steps_per_transition):
-            interp = (1 - alpha) * start + alpha * end
-            result.append(interp.tolist())
-    return result
-
-
-def process_keypress_sequence(keypresses, steps_per_key=20):
+def process_keypress_sequence(keypresses, steps_per_key=config.steps_per_key):
     """
     Generate robot commands from a sequence of keypresses
     
@@ -50,7 +45,6 @@ def process_keypress_sequence(keypresses, steps_per_key=20):
     Returns:
         List of command vectors [lin_x, lin_y, ang_z, base_height, jump_height]
     """
-    # Start with default values
     lin_x = 0.0
     lin_y = 0.0
     ang_z = 0.0
@@ -111,9 +105,7 @@ def process_keypress_sequence(keypresses, steps_per_key=20):
         
     return commands
 
-# ---------------------------------------------------------------------------
-# Video overlay helpers (merged from create_video_with_overlay.py)
-# ---------------------------------------------------------------------------
+# ------------------- Video rendering code helpers -------------------
 
 def _safe_max(values):
     m = max(abs(v) for v in values)
@@ -180,7 +172,12 @@ def create_video_with_overlay(images_buffer, commands_buffer, output_path, fps=3
     out.release()
     print(f"Video saved to {output_path}")
 
+# ---------------------------- Main Routine ----------------------------
+
 def main():
+    # -------------------------------
+    # Parse arguments
+    # -------------------------------
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="my_experiment")
     parser.add_argument("--ckpt", type=int, default=900)
@@ -188,19 +185,30 @@ def main():
     parser.add_argument("--keys", type=str, default="wwasdjwwddjj", help="Sequence of keyboard commands, e.g. 'wwasdjww'")
     args = parser.parse_args()
 
+    # -------------------------------
+    # Initialize Genesis
+    # -------------------------------
+
     gs.init(
         logger_verbose_time = False,
         logging_level="warning",
     )
 
+    # -------------------------------
+    # Load experiment configuration
+    # -------------------------------
+
     log_dir = f"logs/{args.exp_name}"
     env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = pickle.load(open(f"logs/{args.exp_name}/cfgs.pkl", "rb"))
-    # env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = pickle.load(open(f"genesis/logs/{args.exp_name}/cfgs.pkl", "rb"))
     reward_cfg["reward_scales"] = {}
+
+    # -------------------------------
+    # Initialize environment
+    # -------------------------------
 
     env_cfg["termination_if_roll_greater_than"] =  50  # degree
     env_cfg["termination_if_pitch_greater_than"] = 50  # degree
-    num_envs = 50 # number of robots
+    num_envs = config.num_envs # number of robots
     env = Go2Env(
         num_envs=num_envs,
         env_cfg=env_cfg,
@@ -211,6 +219,9 @@ def main():
         add_camera=True,
     )
     
+    # -------------------------------
+    # Initialize runner
+    # -------------------------------
     runner = OnPolicyRunner(env, train_cfg, log_dir, device="cuda:0")
     resume_path = os.path.join(log_dir, f"model_{args.ckpt}.pt")
     runner.load(resume_path)
@@ -219,50 +230,49 @@ def main():
     obs, _ = env.reset()
     iter = 0
     
-    # Determine which command sequence to use
-    if args.keys:
-        # Convert string of keys to list of characters
-        keypress_sequence = list(args.keys)
-        print(f"\nUsing command sequence from --keys argument: {args.keys}")
-        motion_commands = process_keypress_sequence(keypress_sequence)
-    else:
-        # Provide a default example sequence
-        example_sequence = ['w', 'w', 'w', 'a', 'a', 'd', 'd', 'j', 's', 's']
-        print("\nNo command sequence provided. Using example sequence:")
-        print(" ".join(example_sequence))
-        motion_commands = process_keypress_sequence(example_sequence)
+    # -------------------------------
+    # Generate motion commands
+    # -------------------------------
+    keypress_sequence = list(args.keys) if args.keys else config.key_commands
+    motion_commands = process_keypress_sequence(keypress_sequence)
     
     max_iter = len(motion_commands)
-
     reset_jump_toggle_iter = 0
     images_buffer = []
     commands_buffer = []
-    with torch.no_grad():
-        while iter < max_iter:
-                
-            # Get current motion command
-            lin_x, lin_y, ang_z, base_height, jump_height = motion_commands[iter]
-            toggle_jump = True
 
+    with torch.no_grad():
+        # -------------------------------
+        # Run evaluation
+        # -------------------------------
+        while iter < max_iter:
             if iter % 30 == 0:
                 print(f"Iter: {iter}, lin_x={lin_x:.2f}, lin_y={lin_y:.2f}")
+            
+            # Get current command
+            lin_x, lin_y, ang_z, base_height, jump_height = motion_commands[iter]
+            toggle_jump = True
    
-            # env.cam_0.set_pose(lookat=env.base_pos.cpu().numpy()[0],)
-            # env.cam_0.set_pose(pos=env.base_pos.cpu().numpy()[0] + np.array([0.5, 0.0, 0.5]) * iter / 50, lookat=env.base_pos.cpu().numpy()[0],)
-                
+            # -------------------------------
+            # Apply command
+            # -------------------------------
             actions = policy(obs)
-            # print(f"toggle_jump: {toggle_jump}, jump_height: {jump_height}")
-             
             env.commands = torch.tensor([[lin_x, lin_y, ang_z, base_height, toggle_jump*jump_height]], dtype=torch.float).to("cuda:0").repeat(num_envs, 1)
-            obs, _, rews, dones, infos = env.step(actions, is_train=False)
-            # print(env.base_pos, env.base_lin_vel)
+            obs, _, rews, dones, infos = env.step(actions, is_train=False) # step the simulation
+
+            # -------------------------------
+            # Handle jump toggle
+            # -------------------------------
+            
             if toggle_jump and reset_jump_toggle_iter == 0:
-                reset_jump_toggle_iter = iter + 3
+                reset_jump_toggle_iter = iter + config.jump_step
             if iter == reset_jump_toggle_iter and toggle_jump:
                 toggle_jump = False
                 reset_jump_toggle_iter = 0
             
+            # -------------------------------
             # Render the camera
+            # -------------------------------
             if env.cam_0 is not None:
                 rgb, _, _, _ = env.cam_0.render(
                     rgb=True,
@@ -274,6 +284,9 @@ def main():
                     # commands_buffer.append([lin_x, lin_y, ang_z, base_height, toggle_jump*jump_height])
                     commands_buffer.append([lin_x, lin_y, ang_z, base_height, jump_height])
             
+            # -------------------------------
+            # Check for termination
+            # -------------------------------
             if dones.any():
                 iter = 0
             
