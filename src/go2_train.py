@@ -166,8 +166,6 @@ def main():
         shutil.rmtree(log_dir)
     os.makedirs(log_dir, exist_ok=True)
 
-    import pdb; breakpoint()
-
     env = Go2Env(
         num_envs=args.num_envs,
         env_cfg=env_cfg,
