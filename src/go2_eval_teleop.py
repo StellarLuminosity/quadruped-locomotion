@@ -3,6 +3,7 @@
 import argparse
 import os
 import pickle
+import cv2  # For video rendering
 import torch
 from go2_env import Go2Env
 from rsl_rl.runners import OnPolicyRunner
@@ -110,6 +111,68 @@ def process_keypress_sequence(keypresses, steps_per_key=20):
         
     return commands
 
+# ---------------------------------------------------------------------------
+# Video overlay helpers (merged from create_video_with_overlay.py)
+# ---------------------------------------------------------------------------
+
+def _safe_max(values):
+    m = max(abs(v) for v in values)
+    return m if m > 1e-6 else 1.0
+
+def _normalize_command_ranges(commands_buffer):
+    """Return max absolute values for each command dimension for scaling overlays."""
+    max_lin_x = _safe_max(cmd[0] for cmd in commands_buffer)
+    max_lin_y = _safe_max(cmd[1] for cmd in commands_buffer)
+    max_ang_z = _safe_max(cmd[2] for cmd in commands_buffer)
+    max_base_h = _safe_max(cmd[3] for cmd in commands_buffer)
+    max_jump_h = _safe_max(cmd[4] for cmd in commands_buffer)
+    return max_lin_x, max_lin_y, max_ang_z, max_base_h, max_jump_h
+
+def _draw_joystick(img, lin_x, lin_y, max_lin_x, max_lin_y, radius=100, x_offset=10, y_offset=10):
+    # Draw gradient disc
+    for i in range(radius):
+        r = radius - i
+        col = int(55 + 200 * (0.5 + 0.5 * i / radius))
+        cv2.circle(img, (x_offset + radius, y_offset + radius), r, (col, col, col), -1)
+    # Thumb position
+    jx = int(x_offset + radius + (lin_y / max_lin_y) * radius)
+    jy = int(y_offset + radius - (lin_x / max_lin_x) * radius)
+    cv2.circle(img, (jx + 2, jy + 2), int(radius * 0.12), (0, 0, 0), -1)
+    return img
+
+def _draw_height_bar(img, base_h, max_base_h, x_offset=220, y_offset=10, bar_h=200, bar_w=20):
+    cv2.rectangle(img, (x_offset, y_offset), (x_offset + bar_w, y_offset + bar_h), (200, 200, 200), -1)
+    cur_pos = int(y_offset + bar_h - (base_h / max_base_h) * bar_h)
+    cv2.rectangle(img, (x_offset, cur_pos), (x_offset + bar_w, y_offset + bar_h), (0, 255, 0), -1)
+    return img
+
+def _draw_ang_vel_bar(img, ang_z, max_ang_z, x_offset=10, y_offset=220, bar_w=200, bar_h=20):
+    cv2.rectangle(img, (x_offset, y_offset), (x_offset + bar_w, y_offset + bar_h), (200, 200, 200), -1)
+    safe_max = max(max_ang_z, 1e-6)
+    norm = (ang_z / safe_max + 1) / 2  # 0..1
+    cur_pos = int(x_offset + norm * bar_w)
+    cv2.rectangle(img, (x_offset, y_offset), (cur_pos, y_offset + bar_h), (0, 255, 0), -1)
+    return img
+
+def create_video_with_overlay(images_buffer, commands_buffer, output_path, fps=30):
+    h, w, _ = images_buffer[0].shape
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (w, h))
+    max_lin_x, max_lin_y, max_ang_z, max_base_h, _ = _normalize_command_ranges(commands_buffer)
+
+    radius = 100
+    for img, cmd in zip(images_buffer, commands_buffer):
+        lin_x, lin_y, ang_z, base_h, _ = cmd
+        x_offset = w // 2 - 100
+        y_offset = h - 250
+        canvas = _draw_joystick(img.copy(), lin_x, lin_y, max_lin_x, max_lin_y, radius, x_offset, y_offset)
+        canvas = _draw_height_bar(canvas, base_h, max_base_h, x_offset + radius*2 + 10, y_offset)
+        canvas = _draw_ang_vel_bar(canvas, ang_z, max_ang_z, x_offset, y_offset + radius*2 + 20)
+        out.write(cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR))
+
+    out.release()
+    print(f"Video saved to {output_path}")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="my_experiment")
@@ -215,6 +278,10 @@ def main():
         commands_buffer = np.array(commands_buffer)
         pickle.dump(images_buffer, open("images_buffer.pkl", "wb"))
         pickle.dump(commands_buffer, open("commands_buffer.pkl", "wb"))
+
+        # Automatically create video
+        output_video_path = getattr(config, "output_video_path", "output.mp4")
+        create_video_with_overlay(images_buffer, commands_buffer, output_video_path, fps=30)
 
 if __name__ == "__main__":
     main()
