@@ -44,14 +44,9 @@ Train the Go2 robot:
 python src/go2_train.py --exp_name="my_experiment" --max_iterations=1000
 ```
 
-Generate evaluations for video:
+Generate evaluations and create video:
 ```bash
 python src/go2_eval_teleop.py -e my_experiment --ckpt 900 --keys "wwasdjwwddjj"
-```
-
-Create Video:
-```bash
-python src/create_video_with_overlay.py
 ```
 
 ## Project Structure
