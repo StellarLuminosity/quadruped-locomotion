@@ -134,6 +134,13 @@ logs
 !logs/my_experiment/model_1000.pt
 !logs/my_experiment/cfgs.pkl
 
+<<<<<<< HEAD
+=======
+# Extra
+LICENSE
+.vs-code
+
+>>>>>>> origin/main
 # Folders
 mujoco-3*
 *.zip
