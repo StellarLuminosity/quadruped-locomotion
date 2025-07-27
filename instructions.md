@@ -44,6 +44,16 @@ Train the Go2 robot:
 python src/go2_train.py --exp_name="my_experiment" --max_iterations=1000
 ```
 
+Generate evaluations for video:
+```bash
+python src/go2_eval_teleop.py --ckpt 1000 --save-data=True
+```
+
+Create Video:
+```bash
+python src/create_video_with_overlay.py
+```
+
 ## Project Structure
 ```
 quadrupeds_locomotion/
