@@ -33,77 +33,34 @@ import config
 
 # ---------------------- Command Sequence Helpers ----------------------
 
-def process_keypress_sequence(keypresses, steps_per_key=config.steps_per_key):
+# Global variables to store predefined command velocities
+key_commands = [
+    [1.0, 0.0, 0.0, 0.3, 0.7],    # forward
+    [0.0, 1.0, 0.0, 0.3, 0.7],    # left
+    [0.0, -1.0, 0.0, 0.3, 0.7],   # right
+    [-1.0, 0.0, 0.0, 0.3, 0.7],   # backward
+    [0.0, 0.0, 0.0, 0.3, 0.7],    # stop
+]
+
+def interpolate_commands(commands, steps_per_transition):
     """
-    Generate robot commands from a sequence of keypresses
+    Interpolate between command vectors to create smooth transitions
     
     Args:
-        keypresses: List of characters representing keyboard keys (e.g., ['w', 'a', 's', 'd', 'j'])
-        steps_per_key: Number of simulation steps to apply each key command
+        commands: List of command vectors [lin_x, lin_y, ang_z, base_height, jump_height]
+        steps_per_transition: Number of steps to interpolate between each command
         
     Returns:
-        List of command vectors [lin_x, lin_y, ang_z, base_height, jump_height]
+        List of interpolated command vectors
     """
-    lin_x = 0.0
-    lin_y = 0.0
-    ang_z = 0.0
-    base_height = 0.3
-    jump_height = 0.7
-    toggle_jump = False
-    commands = []
-    
-    # Process each keypress
-    for key in keypresses:
-        # Apply the same logic as the original on_press function
-        if key == 'w':
-            lin_x += 0.1
-        elif key == 's':
-            lin_x -= 0.1
-        elif key == 'a':
-            lin_y += 0.1
-        elif key == 'd':
-            lin_y -= 0.1
-        elif key == 'q':
-            ang_z += 0.1
-        elif key == 'e':
-            ang_z -= 0.1
-        elif key == 'r':
-            base_height += 0.1
-        elif key == 'f':
-            base_height -= 0.1
-        elif key == 'j':
-            toggle_jump = True
-        elif key == 'u':
-            jump_height += 0.1
-        elif key == 'm':
-            jump_height -= 0.1
-            
-        # Apply clipping to ensure values are in valid ranges
-        lin_x = np.clip(lin_x, -1.0, 2.0)
-        lin_y = np.clip(lin_y, -0.5, 0.5)
-        ang_z = np.clip(ang_z, -0.6, 0.6)
-        base_height = np.clip(base_height, 0.1, 0.5)
-        jump_height = np.clip(jump_height, 0.5, 1.5)
-        
-        # Create the command vector with the jump flag
-        jump_val = jump_height if toggle_jump else 0.0
-        cmd = [lin_x, lin_y, ang_z, base_height, jump_val]
-        
-        # Add the command multiple times based on steps_per_key
-        if key != 'j':
-            commands.extend([cmd] * steps_per_key)
-        
-        # Reset jump toggle after one command
-        toggle_jump = False
-        
-        # Print the current command for debugging
-        print(f"Key '{key}' → Command: [{lin_x:.2f}, {lin_y:.2f}, {ang_z:.2f}, {base_height:.2f}, {jump_val:.2f}]")
-    
-    # Always add a final stop command
-    if commands:
-        commands.append([0.0, 0.0, 0.0, base_height, 0.0])
-        
-    return commands
+    result = []
+    for i in range(len(commands) - 1):
+        start = np.array(commands[i])
+        end = np.array(commands[i + 1])
+        for alpha in np.linspace(0, 1, steps_per_transition):
+            interp = (1 - alpha) * start + alpha * end
+            result.append(interp.tolist())
+    return result
 
 # ------------------- Video rendering code helpers -------------------
 
@@ -223,7 +180,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="my_experiment")
     parser.add_argument("--ckpt", type=int, default=900)
-    parser.add_argument("--keys", type=str, help="Sequence of keyboard commands, e.g. 'wwasdjww'")
     args = parser.parse_args()
 
     # -------------------------------
@@ -272,10 +228,9 @@ def main():
     iter = 0
     
     # -------------------------------
-    # Generate motion commands
+    # Generate motion commands using interpolation
     # -------------------------------
-    keypress_sequence = list(args.keys) if args.keys else config.key_commands
-    motion_commands = process_keypress_sequence(keypress_sequence)
+    motion_commands = interpolate_commands(key_commands, config.steps_per_transition)
     
     max_iter = len(motion_commands)
     reset_jump_toggle_iter = 0
