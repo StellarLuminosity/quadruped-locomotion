@@ -46,7 +46,7 @@ python src/go2_train.py --exp_name="my_experiment" --max_iterations=1000
 
 Generate evaluations and create video:
 ```bash
-python src/go2_eval_teleop.py -e my_experiment --ckpt 900 --keys "wwasdjwwddjj"
+python src/go2_eval_teleop.py -e my_experiment --ckpt 900
 ```
 
 ## Project Structure

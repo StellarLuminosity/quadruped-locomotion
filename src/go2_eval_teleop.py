@@ -191,7 +191,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--exp_name", type=str, default="my_experiment")
     parser.add_argument("--ckpt", type=int, default=900)
-    parser.add_argument("--keys", type=str, default="wwasdjwwddjj", help="Sequence of keyboard commands, e.g. 'wwasdjww'")
+    parser.add_argument("--keys", type=str, help="Sequence of keyboard commands, e.g. 'wwasdjww'")
     args = parser.parse_args()
 
     # -------------------------------
@@ -251,16 +251,15 @@ def main():
     commands_buffer = []
 
     with torch.no_grad():
-        # -------------------------------
-        # Run evaluation
-        # -------------------------------
         while iter < max_iter:
-            if iter % 30 == 0:
-                print(f"Iter: {iter}, lin_x={lin_x:.2f}, lin_y={lin_y:.2f}")
-            
+            # -------------------------------
             # Get current command
+            # -------------------------------
             lin_x, lin_y, ang_z, base_height, jump_height = motion_commands[iter]
             toggle_jump = True
+            
+            if iter % 30 == 0:
+                print(f"Iter: {iter}, lin_x={lin_x:.2f}, lin_y={lin_y:.2f}")
    
             # -------------------------------
             # Apply command
