@@ -134,13 +134,11 @@ logs
 !logs/my_experiment/model_1000.pt
 !logs/my_experiment/cfgs.pkl
 
-<<<<<<< HEAD
-=======
 # Extra
 LICENSE
 .vs-code
+src/old_go2_eval_teleop.py
 
->>>>>>> origin/main
 # Folders
 mujoco-3*
 *.zip
