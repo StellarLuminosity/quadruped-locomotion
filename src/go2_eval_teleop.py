@@ -111,7 +111,7 @@ def _safe_max(values):
     m = max(abs(v) for v in values)
     return m if m > 1e-6 else 1.0
 
-def _normalize_command_ranges(commands_buffer):
+def normalize_commands(commands_buffer):
     """Return max absolute values for each command dimension for scaling overlays."""
     max_lin_x = _safe_max(cmd[0] for cmd in commands_buffer)
     max_lin_y = _safe_max(cmd[1] for cmd in commands_buffer)
@@ -120,66 +120,98 @@ def _normalize_command_ranges(commands_buffer):
     max_jump_h = _safe_max(cmd[4] for cmd in commands_buffer)
     return max_lin_x, max_lin_y, max_ang_z, max_base_h, max_jump_h
 
-def _draw_joystick(img, lin_x, lin_y, max_lin_x, max_lin_y, radius=100, x_offset=10, y_offset=10):
-    # Draw gradient disc
+def draw_joystick(image, lin_x, lin_y, ang_z, base_height, jump_height, max_lin_x, max_lin_y, radius=100, x_offset=10, y_offset=10):
+    # Draw the joystick base with gradient directly on the image
     for i in range(radius):
         r = radius - i
-        col = int(55 + 200 * (0.5 + 0.5 * i / radius))
-        cv2.circle(img, (x_offset + radius, y_offset + radius), r, (col, col, col), -1)
-    
-    # Ensure max values are not zero to avoid division by zero
-    safe_max_x = max(max_lin_x, 1e-6)
-    safe_max_y = max(max_lin_y, 1e-6)
-    
-    # Normalize values to ensure they stay within -1 to 1 range
-    norm_lin_y = np.clip(lin_y / safe_max_y, -1.0, 1.0)
-    norm_lin_x = np.clip(lin_x / safe_max_x, -1.0, 1.0)
-    
-    # Thumb position - ensure it stays within the circle
-    jx = int(x_offset + radius + norm_lin_y * radius)
-    jy = int(y_offset + radius - norm_lin_x * radius)
-    
-    # Add shadow effect
-    cv2.circle(img, (jx + 2, jy + 2), int(radius * 0.12), (0, 0, 0), -1)
-    return img
+        # color = (255, int(255 * (0.5 + 0.5 * i / radius)), int(255 * (0.5 + 0.5 * i / radius)))
+        color = (int(55+200 * (0.5 + 0.5 * i / radius)), int(55+200 * (0.5 + 0.5 * i / radius)), int(55+200 * (0.5 + 0.5 * i / radius)))
+        cv2.circle(image, (x_offset + radius, y_offset + radius), r, color, -1)
 
-def _draw_height_bar(img, base_h, max_base_h, target_h=None, x_offset=220, y_offset=10, bar_h=200, bar_w=20):
-    """Draw vertical bar showing current and target base height."""
-    # Background
-    cv2.rectangle(img, (x_offset, y_offset), (x_offset + bar_w, y_offset + bar_h), (200, 200, 200), -1)
-    # Current height indicator (green)
-    cur_pos = int(y_offset + bar_h - (base_h / max_base_h) * bar_h)
-    cv2.rectangle(img, (x_offset, cur_pos), (x_offset + bar_w, y_offset + bar_h), (0, 255, 0), -1)
-    # Target height line (red)
-    if target_h is not None:
-        target_pos = int(y_offset + bar_h - (target_h / max_base_h) * bar_h)
-        cv2.line(img, (x_offset, target_pos), (x_offset + bar_w, target_pos), (0, 0, 255), 2)
-    return img
+    # Draw the joystick position with shadow directly on the image
+    joystick_x = int(x_offset + radius + (lin_y / max_lin_y) * radius)
+    joystick_y = int(y_offset + radius - (lin_x / max_lin_x) * radius)
+    cv2.circle(image, (joystick_x + 2, joystick_y + 2), int(radius * 0.12), (0, 0, 0), -1)  # Shadow
+    # cv2.circle(image, (joystick_x, joystick_y), int(radius * 0.1), (0, 0, 255), -1)
 
-def _draw_ang_vel_bar(img, ang_z, max_ang_z, x_offset=10, y_offset=220, bar_w=200, bar_h=20):
-    cv2.rectangle(img, (x_offset, y_offset), (x_offset + bar_w, y_offset + bar_h), (200, 200, 200), -1)
-    safe_max = max(max_ang_z, 1e-6)
-    norm = (ang_z / safe_max + 1) / 2  # 0..1
-    cur_pos = int(x_offset + norm * bar_w)
-    cv2.rectangle(img, (x_offset, y_offset), (cur_pos, y_offset + bar_h), (0, 255, 0), -1)
-    return img
+    return image
+
+
+def draw_target_height_bar(image, base_height, max_base_height, target_height=1.0, x_offset=220, y_offset=10):
+    base_height = max(0, base_height)  # Ensure base_height is non-negative
+    # Create a bar to represent the target height
+    bar_width = 20
+    bar_height = 200
+    bar_x = x_offset  # Place the bar to the right of the joystick
+    bar_y = y_offset  # Align with the top of the joystick
+
+    # Draw the background of the bar
+    cv2.rectangle(image, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (200, 200, 200), -1)
+
+    # Draw the current height indicator
+    current_height_pos = int(bar_y + bar_height - (base_height / max_base_height) * bar_height)
+    cv2.rectangle(image, (bar_x, current_height_pos), (bar_x + bar_width, bar_y + bar_height), (0, 255, 0), -1)
+
+    # Draw the target height line
+    target_height_pos = int(bar_y + bar_height - (target_height / target_height) * bar_height)
+    cv2.line(image, (bar_x, target_height_pos), (bar_x + bar_width, target_height_pos), (0, 0, 255), 2)
+
+    return image
+
+def draw_angular_velocity_bar(image, ang_z, max_ang_z, x_offset=10, y_offset=220):
+    # Create a bar to represent the angular velocity
+    bar_width = 200
+    bar_height = 20
+    bar_x = x_offset  # Use the provided x_offset
+    bar_y = y_offset  # Use the provided y_offset
+
+    # Draw the background of the bar
+    cv2.rectangle(image, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (200, 200, 200), -1)
+
+    # Draw the current angular velocity indicator
+    current_ang_pos = int(bar_x + (ang_z / max_ang_z + 1) / 2 * bar_width)  # Normalize ang_z to [0, 1]
+    cv2.rectangle(image, (bar_x, bar_y), (current_ang_pos, bar_y + bar_height), (0, 255, 0), -1)
+
+    return image
 
 def create_video_with_overlay(images_buffer, commands_buffer, output_path, fps=30):
-    h, w, _ = images_buffer[0].shape
+    # Get the dimensions of the images
+    height, width, _ = images_buffer[0].shape
+
+    # Define the codec and create a VideoWriter object
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (w, h))
-    max_lin_x, max_lin_y, max_ang_z, max_base_h, _ = _normalize_command_ranges(commands_buffer)
+    out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
 
-    radius = 100
-    for img, cmd in zip(images_buffer, commands_buffer):
-        lin_x, lin_y, ang_z, base_h, _ = cmd
-        x_offset = w // 2 - 100
-        y_offset = h - 250
-        canvas = _draw_joystick(img.copy(), lin_x, lin_y, max_lin_x, max_lin_y, radius, x_offset, y_offset)
-        canvas = _draw_height_bar(canvas, base_h, max_base_h, target_h=max_base_h*0.5, x_offset=x_offset + radius*2 + 10, y_offset=y_offset)
-        canvas = _draw_ang_vel_bar(canvas, ang_z, max_ang_z, x_offset, y_offset + radius*2 + 20)
-        out.write(cv2.cvtColor(canvas, cv2.COLOR_RGB2BGR))
+    max_lin_x, max_lin_y, max_ang_z, max_base_height, max_jump_height = normalize_commands(commands_buffer)
 
+    for i in range(len(images_buffer)):
+        image = images_buffer[i]
+        # Invert the image channels (RGB to BGR) for OpenCV
+        
+        lin_x, lin_y, ang_z, base_height, jump_height = commands_buffer[i]
+
+        
+        # Overlay the joystick on the image (top-left corner)
+        x_offset = images_buffer[0].shape[1] // 2 - 100
+        y_offset = images_buffer[0].shape[0]  - 250
+        radius = 100
+        
+        # Draw the joystick overlay
+        image = draw_joystick(image, lin_x, lin_y, ang_z, base_height, jump_height, max_lin_x, max_lin_y, radius=radius, x_offset=x_offset, y_offset=y_offset)
+
+
+        # Draw the target height bar
+        image = draw_target_height_bar(image, base_height, max_base_height, x_offset=x_offset + radius*2 + 10, y_offset=y_offset)
+
+        # Draw the angular velocity bar with adjusted position
+        image = draw_angular_velocity_bar(image, ang_z, max_ang_z, x_offset=x_offset, y_offset=y_offset + radius*2 + 20)
+
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+        # Write the frame to the video
+        out.write(image)
+
+    # Release the VideoWriter
     out.release()
 
 # ---------------------------- Main Routine ----------------------------
