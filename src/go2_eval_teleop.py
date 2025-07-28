@@ -90,7 +90,8 @@ def process_keypress_sequence(keypresses, steps_per_key=config.steps_per_key):
         cmd = [lin_x, lin_y, ang_z, base_height, jump_val]
         
         # Add the command multiple times based on steps_per_key
-        commands.extend([cmd] * steps_per_key)
+        if key != 'j':
+            commands.extend([cmd] * steps_per_key)
         
         # Reset jump toggle after one command
         toggle_jump = False
