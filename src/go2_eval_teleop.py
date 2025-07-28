@@ -133,10 +133,19 @@ def draw_angular_velocity_bar(image, ang_z, max_ang_z, x_offset=10, y_offset=220
 def create_video_with_overlay(images_buffer, commands_buffer, output_path, fps=30):
     # Get the dimensions of the images
     height, width, _ = images_buffer[0].shape
-
+    
+    # Create parent directory if it doesn't exist
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)) or '.', exist_ok=True)
+    
+    print(f"Creating video at: {os.path.abspath(output_path)}")
+    
     # Define the codec and create a VideoWriter object
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    
+    if not out.isOpened():
+        print(f"Error: Could not open video writer for {output_path}")
+        return
 
     max_lin_x, max_lin_y, max_ang_z, max_base_height, max_jump_height = normalize_commands(commands_buffer)
 
@@ -165,10 +174,15 @@ def create_video_with_overlay(images_buffer, commands_buffer, output_path, fps=3
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
         # Write the frame to the video
-        out.write(image)
+        success = out.write(image)
+        if not success:
+            print(f"Warning: Failed to write frame {i} to video")
 
     # Release the VideoWriter
     out.release()
+    print(f"Video saved to: {os.path.abspath(output_path)}")
+    print(f"Video file exists: {os.path.exists(output_path)}")
+    print(f"File size: {os.path.getsize(output_path) if os.path.exists(output_path) else 0} bytes")
 
 # ---------------------------- Main Routine ----------------------------
 
