@@ -362,14 +362,6 @@ def main():
             return
         print(f"Found {len(checkpoints)} checkpoints to process: {checkpoints}")
     
-    # Process each checkpoint
-    for ckpt in checkpoints:
-        try:
-            process_checkpoint(args.exp_name, ckpt)
-        except Exception as e:
-            print(f"Error processing checkpoint {ckpt}: {str(e)}")
-            continue
-
     # -------------------------------
     # Initialize Genesis
     # -------------------------------
@@ -377,6 +369,14 @@ def main():
         logger_verbose_time=False,
         logging_level="warning",
     )
+
+    # Process each checkpoint
+    for ckpt in checkpoints:
+        try:
+            process_checkpoint(args.exp_name, ckpt)
+        except Exception as e:
+            print(f"Error processing checkpoint {ckpt}: {str(e)}")
+            continue
 
 if __name__ == "__main__":
     main()
