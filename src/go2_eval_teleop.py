@@ -126,9 +126,20 @@ def _draw_joystick(img, lin_x, lin_y, max_lin_x, max_lin_y, radius=100, x_offset
         r = radius - i
         col = int(55 + 200 * (0.5 + 0.5 * i / radius))
         cv2.circle(img, (x_offset + radius, y_offset + radius), r, (col, col, col), -1)
-    # Thumb position
-    jx = int(x_offset + radius + (lin_y / max_lin_y) * radius)
-    jy = int(y_offset + radius - (lin_x / max_lin_x) * radius)
+    
+    # Ensure max values are not zero to avoid division by zero
+    safe_max_x = max(max_lin_x, 1e-6)
+    safe_max_y = max(max_lin_y, 1e-6)
+    
+    # Normalize values to ensure they stay within -1 to 1 range
+    norm_lin_y = np.clip(lin_y / safe_max_y, -1.0, 1.0)
+    norm_lin_x = np.clip(lin_x / safe_max_x, -1.0, 1.0)
+    
+    # Thumb position - ensure it stays within the circle
+    jx = int(x_offset + radius + norm_lin_y * radius)
+    jy = int(y_offset + radius - norm_lin_x * radius)
+    
+    # Add shadow effect
     cv2.circle(img, (jx + 2, jy + 2), int(radius * 0.12), (0, 0, 0), -1)
     return img
 
