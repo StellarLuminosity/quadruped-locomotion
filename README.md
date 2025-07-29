@@ -174,4 +174,4 @@ self.commands[env_idx, 2] = ang_vel      # Turning velocity (-0.6 to 0.6 rad/s)
 self.commands[env_idx, 3] = height       # Base height (0.2 to 0.4 m)
 self.commands[env_idx, 4] = jump         # Jump height (0.5 to 1.5 m)
 ```
-This code is modeled and implemented on top of the framework provided by: https://github.com/Argo-Robot/quadrupeds_locomotion
+This code is modeled and implemented after: **Federico Sarrocco, Leonardo Bertelli (2025)**: [*Making Quadrupeds Learning to Walk: From Zero to Hero*](https://federicosarrocco.com/blog/Making-Quadrupeds-Learning-To-Walk)
