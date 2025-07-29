@@ -134,12 +134,6 @@ Design Principles:
 - Markovian: Contains all info needed for decision-making
 - Normalized: All values scaled to similar ranges
 
-# NOtes about Curriculm Learning
-
-Curriculum learning is inspired by how humans learn - we start with simple concepts and gradually progress to more complex ones. In reinforcement learning, this means:
-1. Traditional RL: Agent learns all tasks simultaneously, which can be inefficient
-2. Curriculum Learning: Agent learns tasks in a structured progression from easy to hard
-
 The original code had an implicit curriculum that emerged naturally from:
 - Large penalties for instability (base height penalty of -50.0) forced the robot to learn balance first
 - Command resampling gradually exposed the robot to different velocities and behaviors
