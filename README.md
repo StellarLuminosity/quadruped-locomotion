@@ -3,7 +3,7 @@
 
 This project implements a quadruped locomotion system using the Genesis physics engine and the RSL-RL framework.
 
-![Video](quadruped2_compressed.mp4)
+![til](sim.gif)
 
 ## Components
 Genesis provides realistic physics simulation
@@ -134,12 +134,6 @@ Design Principles:
 - Markovian: Contains all info needed for decision-making
 - Normalized: All values scaled to similar ranges
 
-# NOtes about Curriculm Learning
-
-Curriculum learning is inspired by how humans learn - we start with simple concepts and gradually progress to more complex ones. In reinforcement learning, this means:
-1. Traditional RL: Agent learns all tasks simultaneously, which can be inefficient
-2. Curriculum Learning: Agent learns tasks in a structured progression from easy to hard
-
 The original code had an implicit curriculum that emerged naturally from:
 - Large penalties for instability (base height penalty of -50.0) forced the robot to learn balance first
 - Command resampling gradually exposed the robot to different velocities and behaviors
@@ -174,3 +168,4 @@ self.commands[env_idx, 2] = ang_vel      # Turning velocity (-0.6 to 0.6 rad/s)
 self.commands[env_idx, 3] = height       # Base height (0.2 to 0.4 m)
 self.commands[env_idx, 4] = jump         # Jump height (0.5 to 1.5 m)
 ```
+This code is modeled and implemented after: **Federico Sarrocco, Leonardo Bertelli (2025)**: [*Making Quadrupeds Learning to Walk: From Zero to Hero*](https://federicosarrocco.com/blog/Making-Quadrupeds-Learning-To-Walk)
