@@ -12,6 +12,33 @@ from genesis.utils.geom import (
     transform_quat_by_quat,
 )
 
+# ============================================================================
+# CONSTANTS - Centralized configuration to eliminate magic numbers
+# ============================================================================
+
+# Jump phase constants
+JUMP_PHASE_PEAK_START = 0.3  # When peak height phase begins (30% through jump)
+JUMP_PHASE_PEAK_END = 0.6    # When peak height phase ends (60% through jump)
+JUMP_PHASE_LANDING = 0.6     # When landing phase begins
+JUMP_HEIGHT_TOLERANCE = 0.2  # Tolerance for successful jump height (meters)
+JUMP_SPEED_MULTIPLIER = 0.2  # Multiplier for jump speed reward
+
+# Reward computation constants
+TRACKING_SIGMA_DEFAULT = 0.25
+HEIGHT_REWARD_SIGMA = 0.25
+ACTIVE_MASK_THRESHOLD = 0.01  # Threshold for determining if jump is active
+
+# Physics constants
+GRAVITY = 9.81
+DEFAULT_DT = 0.02  # 50Hz control frequency
+
+# Curriculum learning constants
+CURRICULUM_HISTORY_SIZE = 100  # Number of episodes to track for performance
+STABILITY_STAGE = 0
+LOCOMOTION_STAGE = 1
+AGILITY_STAGE = 2
+MASTERY_STAGE = 3
+
 
 def gs_rand_float(lower, upper, shape, device):
     """Generates random numbers for domain randomization. Adds variability to training (different starting positions, noise, etc.)"""
@@ -58,9 +85,9 @@ class AdaptiveCurriculum:
         # Performance tracking
         self.episode_count = 0
         self.stage_episode_count = 0
-        self.performance_history = deque(maxlen=100)  # Track last 100 episodes
-        self.reward_history = deque(maxlen=100)
-        self.success_history = deque(maxlen=100)
+        self.performance_history = deque(maxlen=CURRICULUM_HISTORY_SIZE)
+        self.reward_history = deque(maxlen=CURRICULUM_HISTORY_SIZE)
+        self.success_history = deque(maxlen=CURRICULUM_HISTORY_SIZE)
         
         # Stage-specific reward weights
         self.stage_reward_weights = {
@@ -221,6 +248,23 @@ class AdaptiveCurriculum:
 
 
 class Go2Env:
+    """
+    Go2 Quadruped Robot Training Environment
+    
+    This class manages the physics simulation, reward computation, and observation
+    generation for training a Go2 quadruped robot using reinforcement learning.
+    
+    Key Features:
+    - Multi-environment parallel training
+    - Comprehensive reward system for locomotion and jumping
+    - Optional adaptive curriculum learning
+    - Domain randomization for robust training
+    """
+    
+    # ============================================================================
+    # INITIALIZATION AND SETUP
+    # ============================================================================
+    
     def __init__(
         self,
         num_envs,
@@ -706,132 +750,121 @@ class Go2Env:
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         return self.obs_buf, None
 
-    # ------------ reward functions---------------- #
+    # ============================================================================
+    # REWARD FUNCTIONS - Organized reward computation methods
+    # ============================================================================
 
     def _reward_tracking_lin_vel(self):
-        """ 
-            Rewards robot for accurately following target linear velocities (forward/backward, left/right)
-            Exponential decay of reward based on squared error
-            Purpose: Encourage the robot to walk where it’s told, penalizing overshooting or lagging."""
+        """Reward for accurately tracking target linear velocities.
+        
+        Computation: Exponential decay based on squared velocity error
+        Purpose: Encourage robot to follow commanded forward/backward and left/right velocities
+        """
         lin_vel_error = torch.sum(
             torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1
         )
         return torch.exp(-lin_vel_error / self.reward_cfg["tracking_sigma"])
 
     def _reward_tracking_ang_vel(self):
-        """ 
-            Rewards robot for accurately following target angular velocities (yaw)
-            Exponential reward on angular velocity error.
-            Purpose: Encourage correct yaw rotation (turning) and support accurate turning commands."""
+        """Reward for accurately tracking target angular velocities.
+        
+        Computation: Exponential decay based on squared angular velocity error
+        Purpose: Encourage accurate yaw rotation and turning commands
+        """
         ang_vel_error = torch.square(self.commands[:, 2] - self.base_ang_vel[:, 2])
         return torch.exp(-ang_vel_error / self.reward_cfg["tracking_sigma"])
 
     def _reward_lin_vel_z(self):
-        """ 
-            Penalize vertical velocity unless jumping.
-            Purpose: Keep robot grounded and stable when not jumping. """
-        active_mask = (self.jump_toggled_buf < 0.01).float()
+        """Penalize vertical velocity unless jumping.
+        
+        Computation: Squared vertical velocity with jump mask
+        Purpose: Keep robot grounded and stable when not jumping
+        """
+        active_mask = (self.jump_toggled_buf < ACTIVE_MASK_THRESHOLD).float()
         return active_mask * torch.square(self.base_lin_vel[:, 2])
 
     def _reward_action_rate(self):
-        """ 
-            Penalize rapid changes in joint commands.
-            Computation: Squared difference between consecutive actions.
-            Purpose: Encourage smoother, more stable movement for real hardware compatibility."""
-        active_mask = (self.jump_toggled_buf < 0.01).float()
+        """Penalize rapid changes in joint commands.
+        
+        Computation: Squared difference between consecutive actions
+        Purpose: Encourage smoother movement for real hardware compatibility
+        """
+        active_mask = (self.jump_toggled_buf < ACTIVE_MASK_THRESHOLD).float()
         return active_mask * torch.sum(
             torch.square(self.last_actions - self.actions), dim=1
         )
 
     def _reward_similar_to_default(self):
-        """ Encourage joint poses close to default standing configuration.
-            Computation: L1 distance from default joint angles.
-            Purpose: Help avoid unstable or energetically inefficient poses."""
-        active_mask = (self.jump_toggled_buf < 0.01).float()
+        """Encourage joint poses close to default standing configuration.
+        
+        Computation: L1 distance from default joint angles
+        Purpose: Avoid unstable or energetically inefficient poses
+        """
+        active_mask = (self.jump_toggled_buf < ACTIVE_MASK_THRESHOLD).float()
         return active_mask * torch.sum(
             torch.abs(self.dof_pos - self.default_dof_pos), dim=1
         )
 
     def _reward_base_height(self):
-        """ Maintain commanded body height.
-            Computation: Penalize squared error between current and commanded height, only if not jumping.
-            Purpose: Encourage the robot to maintain upright posture and respond to base-height commands."""
-        active_mask = (self.jump_toggled_buf < 0.01).float()
+        """Maintain commanded body height.
+        
+        Computation: Penalize squared error between current and commanded height
+        Purpose: Encourage robot to maintain upright posture and respond to height commands
+        Active: Only when not jumping
+        """
+        active_mask = (self.jump_toggled_buf < ACTIVE_MASK_THRESHOLD).float()
         return active_mask * torch.square(self.base_pos[:, 2] - self.commands[:, 3])
 
-    # def _reward_jump(self):
-    #     # Reward if jump_toggled_buf > 0, even if command is now 0
-    #     target_height = self.jump_target_height
-    #     # Reward is active if jump_toggled_buf is active and some steps have passed (in order to prepare for jump)
-    #     active_mask = (self.jump_toggled_buf > 0.0).float() * (self.jump_toggled_buf < (1.0/3.0 * self.reward_cfg["jump_reward_steps"])).float()
-    #     active_mask_speed = (self.jump_toggled_buf > 1.0/3.0 * self.reward_cfg["jump_reward_steps"]).float() * (self.jump_toggled_buf < (2.0/3.0 * self.reward_cfg["jump_reward_steps"])).float()
-    #     # Reward for reaching the target height
-    #     height_reward = torch.exp(-torch.square(self.base_pos[:, 2] - target_height))
 
-    #     # Reward for having a significant upward velocity
-    #     upward_velocity_reward = 5 * torch.exp(-torch.square(self.base_lin_vel[:, 2] - self.reward_cfg["jump_upward_velocity"]))
-
-    #     stay_penalty = -torch.square(self.base_pos[:, 2] - target_height) * (self.jump_toggled_buf > (2.0/3.0 * self.reward_cfg["jump_reward_steps"])).float()
-
-    #     return active_mask * height_reward + active_mask_speed * upward_velocity_reward + stay_penalty * 0.1
-
-    # def _reward_jump(self):
-    #     target_height = self.jump_target_height
-
-    #     # Target speed the robot should have to reach the target height in half the available time, considering the gravity (uniform acceleration)
-    #     delta_height = target_height - self.base_pos[:, 2]
-    #     available_time = self.reward_cfg["jump_reward_steps"] * self.dt * 0.6 * 0.5
-    #     target_speed = torch.sqrt(2 * torch.abs(delta_height) * 9.81) * torch.sign(delta_height)
-
-    #     # Phase 2: near peak height
-    #     phase2_mask = (self.jump_toggled_buf >= (0.3 * self.reward_cfg["jump_reward_steps"])) & (self.jump_toggled_buf < (0.6 * self.reward_cfg["jump_reward_steps"]))
-    #     target_height_reward = torch.exp(-torch.square(self.base_pos[:, 2] - target_height))
-    #     # upward_speed_reward = torch.exp(-torch.square(self.base_lin_vel[:, 2] - target_speed))
-    #     upward_speed_reward = torch.exp(self.base_lin_vel[:, 2]) * 0.2
-    #     binary_reward_close_to_target = (torch.abs(self.base_pos[:, 2] - target_height) < 0.2).float() * 6.0
-
-    #     # # Phase 1: descend
-    #     phase1_mask = (self.jump_toggled_buf >= (0.6 * self.reward_cfg["jump_reward_steps"]))
-    #     phase1_penalty = -torch.square(self.base_pos[:, 2] - self.reward_cfg["base_height_target"])
-
-    #     return (
-    #         phase2_mask.float() * (target_height_reward * 2 + upward_speed_reward + binary_reward_close_to_target) +
-    #         phase1_mask.float() * phase1_penalty * 0.08
-    #     )
 
     def _reward_jump_height_tracking(self):
-        """ Continuous reward for getting close to desired jump height during jump apex.
-            Active during middle third of the jump. """
-        mask = (self.jump_toggled_buf >= 0.3 * self.reward_cfg["jump_reward_steps"]) & (
-            self.jump_toggled_buf < 0.6 * self.reward_cfg["jump_reward_steps"]
+        """Continuous reward for tracking desired jump height during peak phase.
+        
+        Computation: Exponential reward based on height error during jump peak
+        Purpose: Encourage robot to reach target jump height accurately
+        Active: During middle third of jump (30%-60% of jump duration)
+        """
+        mask = (self.jump_toggled_buf >= JUMP_PHASE_PEAK_START * self.reward_cfg["jump_reward_steps"]) & (
+            self.jump_toggled_buf < JUMP_PHASE_PEAK_END * self.reward_cfg["jump_reward_steps"]
         )
         target_height = self.jump_target_height
         height_diff = torch.exp(-torch.square(self.base_pos[:, 2] - target_height))
         return mask.float() * height_diff
 
     def _reward_jump_height_achievement(self):
-        """ Binary reward if height is within a small tolerance of the jump target."""
-        mask = (self.jump_toggled_buf >= 0.3 * self.reward_cfg["jump_reward_steps"]) & (
-            self.jump_toggled_buf < 0.6 * self.reward_cfg["jump_reward_steps"]
+        """Binary reward for achieving target jump height within tolerance.
+        
+        Computation: Binary bonus if within height tolerance during peak phase
+        Purpose: Provide clear success signal for jump height achievement
+        Active: During middle third of jump (30%-60% of jump duration)
+        """
+        mask = (self.jump_toggled_buf >= JUMP_PHASE_PEAK_START * self.reward_cfg["jump_reward_steps"]) & (
+            self.jump_toggled_buf < JUMP_PHASE_PEAK_END * self.reward_cfg["jump_reward_steps"]
         )
         target_height = self.jump_target_height
-        binary_bonus = (torch.abs(self.base_pos[:, 2] - target_height) < 0.2).float()
+        binary_bonus = (torch.abs(self.base_pos[:, 2] - target_height) < JUMP_HEIGHT_TOLERANCE).float()
         return mask.float() * binary_bonus
 
     def _reward_jump_speed(self):
-        """ Reward upward velocity near the peak of the jump. 
-            Computation: Exponential reward of vertical speed (encourages lift).
-            Purpose: Encourages the robot to actually jump upward with enough momentum."""
-        mask = (self.jump_toggled_buf >= 0.3 * self.reward_cfg["jump_reward_steps"]) & (
-            self.jump_toggled_buf < 0.6 * self.reward_cfg["jump_reward_steps"]
+        """Reward upward velocity during jump peak phase.
+        
+        Computation: Exponential reward of vertical speed with scaling
+        Purpose: Encourage robot to generate sufficient upward momentum
+        Active: During middle third of jump (30%-60% of jump duration)
+        """
+        mask = (self.jump_toggled_buf >= JUMP_PHASE_PEAK_START * self.reward_cfg["jump_reward_steps"]) & (
+            self.jump_toggled_buf < JUMP_PHASE_PEAK_END * self.reward_cfg["jump_reward_steps"]
         )
-        return mask.float() * torch.exp(self.base_lin_vel[:, 2]) * 0.2
+        return mask.float() * torch.exp(self.base_lin_vel[:, 2]) * JUMP_SPEED_MULTIPLIER
 
     def _reward_jump_landing(self):
-        """Penalize deviation from base height after landing.
-            Computation: Negative squared error from base height.
-            Purpose: Encourages a graceful return to neutral stance."""
-        mask = self.jump_toggled_buf >= 0.6 * self.reward_cfg["jump_reward_steps"]
+        """Penalize deviation from base height during landing phase.
+        
+        Computation: Negative squared error from target base height
+        Purpose: Encourage graceful return to neutral stance after jumping
+        Active: During final third of jump (60%-100% of jump duration)
+        """
+        mask = self.jump_toggled_buf >= JUMP_PHASE_LANDING * self.reward_cfg["jump_reward_steps"]
         height_error = -torch.square(
             self.base_pos[:, 2] - self.reward_cfg["base_height_target"]
         )
