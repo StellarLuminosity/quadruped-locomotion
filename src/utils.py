@@ -12,189 +12,129 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Tuple
 
-import torch
 import numpy as np
+import cv2
+
+# ------------------- Video rendering code helpers -------------------
+
+def _safe_max(values):
+    m = max(abs(v) for v in values)
+    return m if m > 1e-6 else 1.0
+
+def normalize_commands(commands_buffer):
+    """Return max absolute values for each command dimension for scaling overlays."""
+    max_lin_x = _safe_max(cmd[0] for cmd in commands_buffer)
+    max_lin_y = _safe_max(cmd[1] for cmd in commands_buffer)
+    max_ang_z = _safe_max(cmd[2] for cmd in commands_buffer)
+    max_base_h = _safe_max(cmd[3] for cmd in commands_buffer)
+    max_jump_h = _safe_max(cmd[4] for cmd in commands_buffer)
+    return max_lin_x, max_lin_y, max_ang_z, max_base_h, max_jump_h
+
+def draw_joystick(image, lin_x, lin_y, ang_z, base_height, jump_height, max_lin_x, max_lin_y, radius=100, x_offset=10, y_offset=10):
+    # Draw the joystick base with gradient directly on the image
+    for i in range(radius):
+        r = radius - i
+        # color = (255, int(255 * (0.5 + 0.5 * i / radius)), int(255 * (0.5 + 0.5 * i / radius)))
+        color = (int(55+200 * (0.5 + 0.5 * i / radius)), int(55+200 * (0.5 + 0.5 * i / radius)), int(55+200 * (0.5 + 0.5 * i / radius)))
+        cv2.circle(image, (x_offset + radius, y_offset + radius), r, color, -1)
+
+    # Draw the joystick position with shadow directly on the image
+    joystick_x = int(x_offset + radius + (lin_y / max_lin_y) * radius)
+    joystick_y = int(y_offset + radius - (lin_x / max_lin_x) * radius)
+    cv2.circle(image, (joystick_x + 2, joystick_y + 2), int(radius * 0.12), (0, 0, 0), -1)  # Shadow
+    # cv2.circle(image, (joystick_x, joystick_y), int(radius * 0.1), (0, 0, 255), -1)
+
+    return image
 
 
-def setup_experiment_directory(exp_name: str, overwrite: bool = False) -> Path:
-    """Setup experiment directory with proper handling of existing directories."""
-    log_dir = Path(f"logs/{exp_name}")
+def draw_target_height_bar(image, base_height, max_base_height, target_height=1.0, x_offset=220, y_offset=10):
+    base_height = max(0, base_height)  # Ensure base_height is non-negative
+    # Create a bar to represent the target height
+    bar_width = 20
+    bar_height = 200
+    bar_x = x_offset  # Place the bar to the right of the joystick
+    bar_y = y_offset  # Align with the top of the joystick
+
+    # Draw the background of the bar
+    cv2.rectangle(image, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (200, 200, 200), -1)
+
+    # Draw the current height indicator
+    current_height_pos = int(bar_y + bar_height - (base_height / max_base_height) * bar_height)
+    cv2.rectangle(image, (bar_x, current_height_pos), (bar_x + bar_width, bar_y + bar_height), (0, 255, 0), -1)
+
+    # Draw the target height line
+    target_height_pos = int(bar_y + bar_height - (target_height / target_height) * bar_height)
+    cv2.line(image, (bar_x, target_height_pos), (bar_x + bar_width, target_height_pos), (0, 0, 255), 2)
+
+    return image
+
+def draw_angular_velocity_bar(image, ang_z, max_ang_z, x_offset=10, y_offset=220):
+    # Create a bar to represent the angular velocity
+    bar_width = 200
+    bar_height = 20
+    bar_x = x_offset  # Use the provided x_offset
+    bar_y = y_offset  # Use the provided y_offset
+
+    # Draw the background of the bar
+    cv2.rectangle(image, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height), (200, 200, 200), -1)
+
+    # Draw the current angular velocity indicator
+    current_ang_pos = int(bar_x + (ang_z / max_ang_z + 1) / 2 * bar_width)  # Normalize ang_z to [0, 1]
+    cv2.rectangle(image, (bar_x, bar_y), (current_ang_pos, bar_y + bar_height), (0, 255, 0), -1)
+
+    return image
+
+def create_video_with_overlay(images_buffer, commands_buffer, output_path, fps=30):
+    # Get the dimensions of the images
+    height, width, _ = images_buffer[0].shape
     
-    if log_dir.exists():
-        if not overwrite:
-            response = input(f"Experiment '{exp_name}' exists. Overwrite? (y/N): ")
-            if response.lower() != 'y':
-                print("Operation cancelled.")
-                sys.exit(0)
-        shutil.rmtree(log_dir)
+    # Create parent directory if it doesn't exist
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)) or '.', exist_ok=True)
     
-    log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir
-
-
-def save_experiment_metadata(log_dir: Path, metadata: Dict[str, Any]) -> None:
-    """Save experiment metadata for reproducibility."""
-    metadata_path = log_dir / "experiment_metadata.pkl"
-    with open(metadata_path, "wb") as f:
-        pickle.dump(metadata, f)
-
-
-def find_available_checkpoints(exp_name: str) -> List[int]:
-    """Find all available model checkpoints for an experiment."""
-    log_dir = Path(f"logs/{exp_name}")
-    if not log_dir.exists():
-        return []
+    print(f"Creating video at: {os.path.abspath(output_path)}")
     
-    checkpoints = []
-    for model_file in log_dir.glob("model_*.pt"):
-        try:
-            ckpt_num = int(model_file.stem.split('_')[1])
-            checkpoints.append(ckpt_num)
-        except (ValueError, IndexError):
-            continue
+    # Define the codec and create a VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
     
-    return sorted(checkpoints)
+    if not out.isOpened():
+        print(f"Error: Could not open video writer for {output_path}")
+        return
+
+    max_lin_x, max_lin_y, max_ang_z, max_base_height, max_jump_height = normalize_commands(commands_buffer)
+
+    for i in range(len(images_buffer)):
+        image = images_buffer[i]
+        # Invert the image channels (RGB to BGR) for OpenCV
+        
+        lin_x, lin_y, ang_z, base_height, jump_height = commands_buffer[i]
+
+        
+        # Overlay the joystick on the image (top-left corner)
+        x_offset = images_buffer[0].shape[1] // 2 - 100
+        y_offset = images_buffer[0].shape[0]  - 250
+        radius = 100
+        
+        # Draw the joystick overlay
+        image = draw_joystick(image, lin_x, lin_y, ang_z, base_height, jump_height, max_lin_x, max_lin_y, radius=radius, x_offset=x_offset, y_offset=y_offset)
 
 
-def list_available_experiments() -> List[str]:
-    """List all available experiments in the logs directory."""
-    logs_dir = Path("logs")
-    if not logs_dir.exists():
-        return []
-    
-    experiments = []
-    for exp_dir in logs_dir.iterdir():
-        if exp_dir.is_dir() and (exp_dir / "configs.pkl").exists():
-            experiments.append(exp_dir.name)
-    
-    return sorted(experiments)
+        # Draw the target height bar
+        image = draw_target_height_bar(image, base_height, max_base_height, x_offset=x_offset + radius*2 + 10, y_offset=y_offset)
 
+        # Draw the angular velocity bar with adjusted position
+        image = draw_angular_velocity_bar(image, ang_z, max_ang_z, x_offset=x_offset, y_offset=y_offset + radius*2 + 20)
 
-# ============================================================================
-# VALIDATION UTILITIES
-# ============================================================================
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-def validate_training_args(args) -> None:
-    """Validate command line arguments for training."""
-    if args.num_envs <= 0:
-        raise ValueError("Number of environments must be positive")
-    
-    if args.max_iterations <= 0:
-        raise ValueError("Max iterations must be positive")
-    
-    if args.device not in ["cpu", "cuda:0"]:
-        raise ValueError("Device must be 'cpu' or 'cuda:0'")
-    
-    if args.device == "cuda:0" and not torch.cuda.is_available():
-        print("⚠️  CUDA requested but not available. Falling back to CPU.")
-        args.device = "cpu"
+        # Write the frame to the video
+        success = out.write(image)
+        if not success:
+            print(f"Warning: Failed to write frame {i} to video")
 
+    # Release the VideoWriter
+    out.release()
+    print(f"Video saved to: {os.path.abspath(output_path)}")
+    print(f"Video file exists: {os.path.exists(output_path)}")
+    print(f"File size: {os.path.getsize(output_path) if os.path.exists(output_path) else 0} bytes")
 
-def validate_experiment_exists(exp_name: str, ckpt: int = None) -> Tuple[Path, List[int]]:
-    """Validate that experiment exists and optionally check for specific checkpoint."""
-    log_dir = Path(f"logs/{exp_name}")
-    
-    if not log_dir.exists():
-        available_exps = list_available_experiments()
-        if available_exps:
-            raise FileNotFoundError(
-                f"Experiment '{exp_name}' not found. Available experiments: {available_exps}"
-            )
-        else:
-            raise FileNotFoundError("No experiments found. Run training first.")
-    
-    config_path = log_dir / "configs.pkl"
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-    
-    available_ckpts = find_available_checkpoints(exp_name)
-    
-    if ckpt is not None:
-        model_path = log_dir / f"model_{ckpt}.pt"
-        if not model_path.exists():
-            if available_ckpts:
-                raise FileNotFoundError(
-                    f"Checkpoint {ckpt} not found. Available checkpoints: {available_ckpts}"
-                )
-            else:
-                raise FileNotFoundError(f"No model checkpoints found in {log_dir}")
-    
-    return log_dir, available_ckpts
-
-
-# ============================================================================
-# DISPLAY AND LOGGING UTILITIES
-# ============================================================================
-
-def print_training_header(args) -> None:
-    """Print professional training information header."""
-    print("\n" + "="*70)
-    print("🤖 GO2 QUADRUPED LOCOMOTION TRAINING")
-    print("="*70)
-    print(f"📊 Experiment: {args.exp_name}")
-    print(f"🏃 Environments: {args.num_envs:,}")
-    print(f"🔄 Max Iterations: {args.max_iterations:,}")
-    print(f"💻 Device: {args.device}")
-    print(f"🎓 Curriculum: {'ADAPTIVE' if args.adaptive_curriculum else 'STANDARD'}")
-    print(f"📅 Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("="*70 + "\n")
-
-
-def print_evaluation_header(exp_name: str, ckpt: int, mode: str) -> None:
-    """Print evaluation information header."""
-    print("\n" + "="*70)
-    print("🎬 GO2 QUADRUPED EVALUATION")
-    print("="*70)
-    print(f"📊 Experiment: {exp_name}")
-    print(f"🔢 Checkpoint: {ckpt}")
-    print(f"🎮 Mode: {mode.upper()}")
-    print(f"📅 Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("="*70 + "\n")
-
-
-def print_success_message(message: str, details: Dict[str, Any] = None) -> None:
-    """Print a formatted success message."""
-    print(f"\n✅ {message}")
-    if details:
-        for key, value in details.items():
-            print(f"   {key}: {value}")
-
-
-def print_error_message(message: str, suggestion: str = None) -> None:
-    """Print a formatted error message with optional suggestion."""
-    print(f"\n❌ {message}")
-    if suggestion:
-        print(f"💡 Suggestion: {suggestion}")
-
-
-# ============================================================================
-# COMMAND GENERATION UTILITIES
-# ============================================================================
-
-def generate_demo_commands(step: int, mode: str = "forward_varying") -> List[float]:
-    """Generate demonstration commands for different demo modes."""
-    if mode == "forward_varying":
-        # Vary forward speed sinusoidally
-        speed = 0.5 + 1.5 * (np.sin(2 * np.pi * step / 200) + 1) / 2
-        return [float(speed), 0.0, 0.0, 0.3, 0.0]
-    
-    elif mode == "circular":
-        # Walk in a circle
-        forward_speed = 1.0
-        turn_speed = 0.3 * np.sin(2 * np.pi * step / 300)
-        return [forward_speed, 0.0, float(turn_speed), 0.3, 0.0]
-    
-    elif mode == "figure_eight":
-        # Walk in a figure-eight pattern
-        forward_speed = 0.8
-        turn_speed = 0.5 * np.sin(2 * np.pi * step / 400)
-        return [forward_speed, 0.0, float(turn_speed), 0.3, 0.0]
-    
-    else:
-        # Default: simple forward walking
-        return [1.0, 0.0, 0.0, 0.3, 0.0]
-
-
-def create_command_tensor(command: List[float], device: str) -> torch.Tensor:
-    """Create a properly formatted command tensor for the environment."""
-    return torch.tensor([command]).to(device)
