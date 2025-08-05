@@ -1,46 +1,75 @@
 
 # Quadruped Locomotion
 
-This project implements a quadruped locomotion system using the Genesis physics engine and the RSL-RL framework.
+This project implements a quadruped locomotion system using the Genesis physics engine and the RSL-RL framework. The system trains a Go2 quadruped robot to perform various locomotion tasks including walking, turning, and jumping.
 
 ![til](sim.gif)
 
-## Components
-Genesis provides realistic physics simulation
-RSL-RL handles the PPO training infrastructure
-Multi-task learning enables walking, jumping, and height control
-Careful reward design balances multiple objectives
-Robust observation space enables effective policy learning
+## Features
 
-## Architecture of the project:
+- **Multi-task Learning**: Single policy handles walking, turning, height control, and jumping
+- **Adaptive Curriculum Learning**: Optional progressive learning stages from basic stability to advanced agility
+- **Domain Randomization**: Sim-to-real transfer techniques for robust policies
+- **Teleoperation Interface**: Interactive control and evaluation of trained policies
+- **Video Generation**: Automated creation of evaluation videos with command overlays
 
-### Robotics Pipeline:
+## Project Architecture
+
+### Core Components
+
+- **Genesis Physics Engine**: Provides realistic physics simulation for the quadruped robot
+- **RSL-RL Framework**: Implements PPO (Proximal Policy Optimization) for reinforcement learning
+- **Go2 Robot Model**: Accurate model of the quadruped with 12 actuated joints (3 per leg)
+- **PD Controller**: Low-level joint control using Proportional-Derivative feedback
+
+### Pipeline Structure
+
+```
 Training Pipeline:
 go2_train.py → go2_env.py → Genesis Physics → RSL-RL Training
 
 Evaluation Pipeline:
-go2_eval.py → Trained Model → go2_env.py → Genesis Physics
-go2_eval_teleop.py → Trained Model → go2_env.py → Genesis Physics (with user control)
+go2_eval_teleop.py → Trained Model → go2_env.py → Genesis Physics → Video Output
+```
 
-### File Relationships:
-go2_env.py
- - The core environment that all other files depend on
-go2_train.py
- - Uses go2_env.py to train the robot
-go2_eval.py
- - Uses go2_env.py + trained model for evaluation
-go2_eval_teleop.py
- - Uses go2_env.py + trained model for interactive control
+### File Structure
 
-### Env Notes
+- **go2_env.py**: Core environment implementation with physics, rewards, and curriculum
+- **go2_train.py**: Training script with PPO algorithm and curriculum learning options
+- **go2_eval_teleop.py**: Evaluation script with teleoperation and video generation
+- **config.py**: Configuration parameters for environment, training, and evaluation
+- **utils.py**: Utility functions for video rendering, command processing, and more
 
-PD controller: stands for Proportional-Derivative controller. It’s a simple but powerful feedback control strategy widely used in robotics to control motors and joints.
-- Proportional (P): Reacts to the current error (difference between where you want the joint to be and where it actually is) (higher = correct errors more agressively).
-- Derivative (D): Reacts to the rate of change of the error (how quickly the error is changing) (higher = correct errors more slowly).
+## Key Technical Concepts
 
-PD controllers are used to control the motors of the robot to achieve the desired joint angles. The PD controller is a feedback controller that uses the error between the desired joint angle and the actual joint angle to control the motor.
+### Adaptive Curriculum Learning
 
-The controller computes the torque (force) to apply to each joint as:
+The system implements a 4-stage curriculum that progressively increases task complexity:
+
+1. **Stability Stage**: Focus on balance and basic standing
+2. **Locomotion Stage**: Learn basic walking and turning
+3. **Agility Stage**: Master complex movements and jumping
+4. **Mastery Stage**: Optimize for efficiency and robustness
+
+Each stage modifies reward weights to emphasize different aspects of performance.
+
+### PD Controller
+
+The Proportional-Derivative controller manages the low-level joint control:
+
+- **Proportional (P)**: Responds to position error (difference between target and actual joint angles)
+- **Derivative (D)**: Responds to velocity error (dampens oscillations)
+
+The controller computes torque as: `torque = kp * position_error + kd * velocity_error`
+
+### Reward System
+
+The reward function balances multiple objectives:
+- Tracking commanded velocities (linear and angular)
+- Maintaining commanded body height
+- Penalizing energy-inefficient movements
+- Encouraging successful jumping when commanded
+- Ensuring stable landing after jumps
 ```python
 torque = Kp * (desired_position - actual_position) + Kd * (desired_velocity - actual_velocity)
 ```
