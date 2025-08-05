@@ -8,38 +8,7 @@ from rsl_rl.runners import OnPolicyRunner
 import numpy as np
 import genesis as gs
 import config
-from utils import normalize_commands, draw_joystick, create_video_with_overlay, draw_target_height_bar, draw_angular_velocity_bar, 
-
-# ---------------------- Command Sequence Helpers ----------------------
-
-# Global variables to store predefined command velocities
-key_commands = [
-    [1.0, 0.0, 0.0, 0.3, 0.7],    # forward
-    [0.0, 1.0, 0.0, 0.3, 0.7],    # left
-    [0.0, -1.0, 0.0, 0.3, 0.7],   # right
-    [-1.0, 0.0, 0.0, 0.3, 0.7],   # backward
-    [0.0, 0.0, 0.0, 0.3, 0.7],    # stop
-]
-
-def interpolate_commands(commands, steps_per_transition):
-    """
-    Interpolate between command vectors to create smooth transitions
-    
-    Args:
-        commands: List of command vectors [lin_x, lin_y, ang_z, base_height, jump_height]
-        steps_per_transition: Number of steps to interpolate between each command
-        
-    Returns:
-        List of interpolated command vectors
-    """
-    result = []
-    for i in range(len(commands) - 1):
-        start = np.array(commands[i])
-        end = np.array(commands[i + 1])
-        for alpha in np.linspace(0, 1, steps_per_transition):
-            interp = (1 - alpha) * start + alpha * end
-            result.append(interp.tolist())
-    return result
+from utils import create_video_with_overlay, interpolate_commands
 
 # ---------------------------- Main Routine ----------------------------
 

@@ -138,3 +138,25 @@ def create_video_with_overlay(images_buffer, commands_buffer, output_path, fps=3
     print(f"Video file exists: {os.path.exists(output_path)}")
     print(f"File size: {os.path.getsize(output_path) if os.path.exists(output_path) else 0} bytes")
 
+# ---------------------- Command Sequence Helpers ----------------------
+
+def interpolate_commands(commands, steps_per_transition):
+    """
+    Interpolate between command vectors to create smooth transitions
+    
+    Args:
+        commands: List of command vectors [lin_x, lin_y, ang_z, base_height, jump_height]
+        steps_per_transition: Number of steps to interpolate between each command
+        
+    Returns:
+        List of interpolated command vectors
+    """
+    result = []
+    for i in range(len(commands) - 1):
+        start = np.array(commands[i])
+        end = np.array(commands[i + 1])
+        for alpha in np.linspace(0, 1, steps_per_transition):
+            interp = (1 - alpha) * start + alpha * end
+            result.append(interp.tolist())
+    return result
+

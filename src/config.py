@@ -158,6 +158,7 @@ default_key_commands = [
     [-1.0, 0.0, 0.0, 0.3, 0.7],   # backward
     [0.0, 0.0, 0.0, 0.3, 0.7],    # stop
 ]
+
 key_commands = ['w', 'a', 's', 'd', 'j', 'f', 'd']
 steps_per_transition = 60
 jump_step = 5 # jump every # steps
