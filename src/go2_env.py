@@ -36,9 +36,9 @@ class AdaptiveCurriculum:
         # Curriculum stages and thresholds
         # --------------------------------
         self.current_stage = 0
-        self.stage_names = ["Stability", "Locomotion", "Agility", "Mastery"]
-        self.advancement_thresholds = [0.7, 0.8, 0.9]  # Success rates to advance
-        self.min_episodes_per_stage = [500, 1000, 1500]  # Minimum episodes before advancement
+        self.stage_names = ["Foundation", "Basic Locomotion", "Advanced Locomotion", "Agility", "Mastery"]
+        self.advancement_thresholds = [0.6, 0.7, 0.75, 0.8]  # Success rates to advance
+        self.min_episodes_per_stage = [300, 500, 700, 1000]  # Minimum episodes before advancement
         
         # --------------------------------
         # Performance tracking
@@ -53,53 +53,85 @@ class AdaptiveCurriculum:
         # Stage-specific reward weights
         # --------------------------------
         self.stage_reward_weights = {
-            0: {  # Stability Stage - Focus on not falling
-                "tracking_lin_vel": 0.3,
-                "tracking_ang_vel": 0.1,
-                "lin_vel_z": -2.0,
-                "base_height": -100.0,  # Even higher penalty for falling
-                "action_rate": -0.01,
+            0: {  # Foundation Stage - Basic stability and standing
+                "tracking_lin_vel": 0.1,  # Very low - just learn to stand
+                "tracking_ang_vel": 0.05,
+                "lin_vel_z": -3.0,  # Strong penalty for vertical movement
+                "base_height": -30.0,  # Moderate penalty - don't be too harsh
+                "action_rate": -0.02,  # Encourage smooth actions
+                "similar_to_default": -0.3,  # Stay close to default pose
+                "orientation_penalty": -2.0,  # New: penalize tilting
+                "foot_contact_reward": 1.0,  # New: reward keeping feet on ground
+                "joint_limits_penalty": -1.0,  # New: avoid extreme joint positions
+                "energy_penalty": -0.01,  # New: encourage efficiency
+                "jump_height_tracking": 0.0,
+                "jump_height_achievement": 0.0,
+                "jump_speed": 0.0,
+                "jump_landing": 0.0,
+            },
+            1: {  # Basic Locomotion - Slow walking
+                "tracking_lin_vel": 0.4,  # Gradual increase
+                "tracking_ang_vel": 0.15,
+                "lin_vel_z": -2.5,
+                "base_height": -35.0,
+                "action_rate": -0.015,
                 "similar_to_default": -0.2,
+                "orientation_penalty": -1.5,
+                "foot_contact_reward": 0.8,
+                "joint_limits_penalty": -0.8,
+                "energy_penalty": -0.008,
                 "jump_height_tracking": 0.0,
                 "jump_height_achievement": 0.0,
                 "jump_speed": 0.0,
                 "jump_landing": 0.0,
             },
-            1: {  # Locomotion Stage - Learn basic walking
-                "tracking_lin_vel": 0.8,
-                "tracking_ang_vel": 0.3,
-                "lin_vel_z": -1.5,
-                "base_height": -75.0,
-                "action_rate": -0.008,
+            2: {  # Advanced Locomotion - Faster walking and turning
+                "tracking_lin_vel": 0.7,
+                "tracking_ang_vel": 0.25,
+                "lin_vel_z": -2.0,
+                "base_height": -40.0,
+                "action_rate": -0.01,
                 "similar_to_default": -0.15,
+                "orientation_penalty": -1.0,
+                "foot_contact_reward": 0.6,
+                "joint_limits_penalty": -0.6,
+                "energy_penalty": -0.006,
                 "jump_height_tracking": 0.0,
                 "jump_height_achievement": 0.0,
                 "jump_speed": 0.0,
                 "jump_landing": 0.0,
             },
-            2: {  # Agility Stage - Add jumping and complex movements
+            3: {  # Agility Stage - Add jumping and complex movements
                 "tracking_lin_vel": 1.0,
                 "tracking_ang_vel": 0.4,
-                "lin_vel_z": -1.0,
-                "base_height": -60.0,
-                "action_rate": -0.006,
+                "lin_vel_z": -1.5,
+                "base_height": -45.0,
+                "action_rate": -0.008,
                 "similar_to_default": -0.1,
+                "orientation_penalty": -0.8,
+                "foot_contact_reward": 0.4,
+                "joint_limits_penalty": -0.4,
+                "energy_penalty": -0.005,
                 "jump_height_tracking": 0.3,
-                "jump_height_achievement": 5.0,
-                "jump_speed": 0.5,
-                "jump_landing": 0.05,
+                "jump_height_achievement": 3.0,  # Reduced from 5.0
+                "jump_speed": 0.3,
+                "jump_landing": 0.1,
             },
-            3: {  # Mastery Stage - Weights for final optimization
+            4: {  # Mastery Stage - Final optimization
                 "tracking_lin_vel": 1.0,
-                "tracking_ang_vel": 0.2,
+                "tracking_ang_vel": 0.3,
                 "lin_vel_z": -1.0,
                 "base_height": -50.0,
                 "action_rate": -0.005,
-                "similar_to_default": -0.1,
+                "similar_to_default": -0.05,
+                "orientation_penalty": -0.5,
+                "foot_contact_reward": 0.2,
+                "joint_limits_penalty": -0.2,
+                "energy_penalty": -0.003,
                 "jump_height_tracking": 0.5,
-                "jump_height_achievement": 10.0,
-                "jump_speed": 1.0,
-                "jump_landing": 0.08,
+                "jump_height_achievement": 8.0,  # Reduced for stability
+                "jump_speed": 0.8,
+                "jump_landing": 0.15,
             }
         }
         self.reset_metrics()
@@ -141,14 +173,16 @@ class AdaptiveCurriculum:
     
     def _evaluate_success(self, reward, length):
         """Evaluate if an episode was successful based on current stage criteria"""
-        if self.current_stage == 0:  # Stability
-            return reward > -10.0 and length > 800  # Didn't fall, lasted most of episode
-        elif self.current_stage == 1:  # Locomotion
-            return reward > 0.0 and length > 900  # Positive reward, good stability
-        elif self.current_stage == 2:  # Agility
-            return reward > 5.0 and length > 950  # Higher reward, very stable
+        if self.current_stage == 0:  # Foundation - Basic stability
+            return reward > -5.0 and length > 600
+        elif self.current_stage == 1:  # Basic Locomotion
+            return reward > -2.0 and length > 700
+        elif self.current_stage == 2:  # Advanced Locomotion
+            return reward > 0.0 and length > 800
+        elif self.current_stage == 3:  # Agility
+            return reward > 5.0 and length > 950
         else:  # Mastery
-            return reward > 10.0 and length > 980  # High performance
+            return reward > 10.0 and length > 980
     
     def _check_advancement(self):
         """Check if conditions are met to advance to next curriculum stage"""
@@ -838,3 +872,20 @@ class Go2Env:
             self.base_pos[:, 2] - self.reward_cfg["base_height_target"]
         )
         return mask.float() * height_error
+
+    def _reward_orientation_penalty(self):
+        """Penalize excessive body tilting and orientation deviations.
+        
+        Computation: Penalize roll and pitch angles to keep robot upright
+        Purpose: Encourage stable, upright locomotion
+        """
+        # Extract roll and pitch from quaternion
+        quat = self.base_quat
+        # Convert quaternion to euler angles (simplified for roll/pitch)
+        roll = torch.atan2(2 * (quat[:, 0] * quat[:, 1] + quat[:, 2] * quat[:, 3]),
+                          1 - 2 * (quat[:, 1]**2 + quat[:, 2]**2))
+        pitch = torch.asin(2 * (quat[:, 0] * quat[:, 2] - quat[:, 3] * quat[:, 1]))
+        
+        # Penalize excessive roll and pitch
+        orientation_error = torch.square(roll) + torch.square(pitch)
+        return orientation_error
