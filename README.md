@@ -54,6 +54,25 @@ quadruped-locomotion-og/
 
 ## Training Approach and Results
 
+Exploration is split into 3 categories:
+```python
+self._sample_commands(envs_idx)                    # Normal commands
+self._sample_commands(random_idxs_1)               # 5% random exploration
+self._sample_jump_commands(random_idxs_2)          # 5% jump commands
+```
+
+### Reward System
+
+The reward function balances multiple objectives:
+- Tracking commanded velocities (linear and angular)
+- Maintaining commanded body height
+- Penalizing energy-inefficient movements
+- Encouraging successful jumping when commanded
+- Ensuring stable landing after jumps
+```python
+torque = Kp * (desired_position - actual_position) + Kd * (desired_velocity - actual_velocity)
+```
+
 ### Curriculum vs Implicit Learning
 
 In this project, I explored both curriculum learning and implicit learning approaches for training the quadruped robot. After training both models for the same number of steps, the curriculum learning approach demonstrated superior performance in terms of stability and convergence speed.
@@ -69,35 +88,8 @@ The curriculum learning approach uses a 5-stage progressive training system that
 4. **Agility**: Higher speeds and dynamic movements
 5. **Mastery**: Complex behaviors including jumping
 
-Exploration is split into 3 categories:
-```python
-self._sample_commands(envs_idx)                    # Normal commands
-self._sample_commands(random_idxs_1)               # 5% random exploration
-self._sample_jump_commands(random_idxs_2)          # 5% jump commands
-```
 
 This staged approach allows the agent to master fundamental skills before moving to more complex tasks, resulting in more stable and reliable locomotion compared to the implicit learning approach which trains on all aspects simultaneously. 
-
-### Reward System
-
-The reward function balances multiple objectives:
-- Tracking commanded velocities (linear and angular)
-- Maintaining commanded body height
-- Penalizing energy-inefficient movements
-- Encouraging successful jumping when commanded
-- Ensuring stable landing after jumps
-```python
-torque = Kp * (desired_position - actual_position) + Kd * (desired_velocity - actual_velocity)
-```
-
-#### Command Vector Breakdown:
-```python
-self.commands[env_idx, 0] = lin_vel_x    # Forward/backward velocity (-1.0 to 2.0 m/s)
-self.commands[env_idx, 1] = lin_vel_y    # Left/right velocity (-0.5 to 0.5 m/s)  
-self.commands[env_idx, 2] = ang_vel      # Turning velocity (-0.6 to 0.6 rad/s)
-self.commands[env_idx, 3] = height       # Base height (0.2 to 0.4 m)
-self.commands[env_idx, 4] = jump         # Jump height (0.5 to 1.5 m)
-```
 
 ## Code Features
 
@@ -122,7 +114,16 @@ obs = [
 ]
 ```
 
-#### Commands
+#### Command Vector Breakdown:
+```python
+self.commands[env_idx, 0] = lin_vel_x    # Forward/backward velocity (-1.0 to 2.0 m/s)
+self.commands[env_idx, 1] = lin_vel_y    # Left/right velocity (-0.5 to 0.5 m/s)  
+self.commands[env_idx, 2] = ang_vel      # Turning velocity (-0.6 to 0.6 rad/s)
+self.commands[env_idx, 3] = height       # Base height (0.2 to 0.4 m)
+self.commands[env_idx, 4] = jump         # Jump height (0.5 to 1.5 m)
+```
+
+### Commands
 Every command is a list of 5 values:
 ```python
 self.commands[env_idx, 0] = lin_vel_x    # forward (positive) / backward (negative) linear velocity (m/s) (-1.0 to 2.0 m/s)
@@ -131,4 +132,4 @@ self.commands[env_idx, 2] = ang_vel      # Turning velocity (-0.6 to 0.6 rad/s)
 self.commands[env_idx, 3] = height       # Base height (0.2 to 0.4 m)
 self.commands[env_idx, 4] = jump         # Jump height (0.5 to 1.5 m)
 ```
-This code is modeled after the example genesis framework: [Genesis Locomotion](https://github.com/Genesis-Embodied-AI/Genesis/tree/806d0a8d84512ff1982330a684bad920ec4262fe/examples/locomotion)
+This code is modeled after the example genesis code: [Genesis Locomotion](https://github.com/Genesis-Embodied-AI/Genesis/tree/806d0a8d84512ff1982330a684bad920ec4262fe/examples/locomotion)
