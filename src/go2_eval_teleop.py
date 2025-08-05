@@ -10,10 +10,12 @@ import genesis as gs
 import config
 from utils import create_video_with_overlay, interpolate_commands, get_checkpoints, process_checkpoint
 
-def process_checkpoint(exp_name, ckpt):
+def process_checkpoint(exp_name, ckpt, use_adaptive_curriculum=False):
     """Load a checkpoint, run evaluation, and generate a video with command overlays."""
     print(f"\n{'='*50}")
     print(f"Processing checkpoint: {ckpt}")
+    if use_adaptive_curriculum:
+        print("Using adaptive curriculum learning")
     print(f"{'='*50}")
     
     log_dir = f"logs/{exp_name}"
@@ -38,7 +40,7 @@ def process_checkpoint(exp_name, ckpt):
         command_cfg=command_cfg,
         show_viewer=False,
         add_camera=True,
-        use_adaptive_curriculum=args.adaptive_curriculum,
+        use_adaptive_curriculum=use_adaptive_curriculum,
     )
     
     # -------------------------------
@@ -188,7 +190,7 @@ def main():
     # -------------------------------
     for ckpt in checkpoints:
         try:
-            process_checkpoint(args.exp_name, ckpt)
+            process_checkpoint(args.exp_name, ckpt, args.adaptive_curriculum)
         except Exception as e:
             print(f"Error processing checkpoint {ckpt}: {str(e)}")
             continue
