@@ -79,3 +79,4 @@ logs
 mujoco-3*
 *.zip
 *.pkl
+videos/
