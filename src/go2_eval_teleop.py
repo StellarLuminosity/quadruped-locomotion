@@ -38,6 +38,7 @@ def process_checkpoint(exp_name, ckpt):
         command_cfg=command_cfg,
         show_viewer=False,
         add_camera=True,
+        use_adaptive_curriculum=args.adaptive_curriculum,
     )
     
     # -------------------------------
@@ -105,7 +106,7 @@ def process_checkpoint(exp_name, ckpt):
             # Check for termination
             # -------------------------------
             if dones.any():
-                iter = 0
+                print("Environment reset, continuing evaluation...")
             
             iter += 1
 
@@ -151,6 +152,8 @@ def main():
                        help="Specific checkpoint to evaluate (if not provided, evaluates every 5000th checkpoint)")
     parser.add_argument("--interval", type=int, default=5000,
                        help="Interval between checkpoints to evaluate (default: 5000)")
+    parser.add_argument("--adaptive_curriculum", action="store_true", 
+                       help="Enable adaptive curriculum learning with explicit stages")
     args = parser.parse_args()
     
     log_dir = f"logs/{args.exp_name}"
