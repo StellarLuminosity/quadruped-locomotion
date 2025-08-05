@@ -183,6 +183,7 @@ default_key_commands = [
 
 key_commands = ['w', 'a', 's', 'd', 'j', 'f', 'd']
 steps_per_transition = 60
+transition_break_steps = 30  # Number of steps to pause at each edge before transitioning
 jump_step = 5 # jump every # steps
 num_envs = 3
 output_video_path = "videos/my_experiment.mp4"

@@ -57,7 +57,7 @@ def process_checkpoint(exp_name, ckpt, use_adaptive_curriculum=False):
     # -------------------------------
     # Generate motion commands using interpolation
     # -------------------------------
-    motion_commands = interpolate_commands(key_commands, config.steps_per_transition)
+    motion_commands = interpolate_commands(key_commands, config.steps_per_transition, config.transition_break_steps)
     
     max_iter = len(motion_commands)
     reset_jump_toggle_iter = 0

@@ -121,15 +121,28 @@ def create_video_with_overlay(images_buffer, commands_buffer, output_path, fps=3
 
 # ---------------------- Command Sequence Helpers ----------------------
 
-def interpolate_commands(commands, steps_per_transition):
+def interpolate_commands(commands, steps_per_transition, break_steps=0):
     """Generate smooth transitions between command vectors with the specified number of interpolation steps."""
     result = []
     for i in range(len(commands) - 1):
         start = np.array(commands[i])
         end = np.array(commands[i + 1])
+        
+        # Add a pause at the starting command if break_steps > 0
+        if break_steps > 0 and i > 0:  # Skip the first command's pause to avoid double pausing
+            for _ in range(break_steps):
+                result.append(start.tolist())
+                
+        # Perform the interpolation between start and end
         for alpha in np.linspace(0, 1, steps_per_transition):
             interp = (1 - alpha) * start + alpha * end
             result.append(interp.tolist())
+            
+    # Add a final pause at the last command
+    if break_steps > 0:
+        for _ in range(break_steps):
+            result.append(commands[-1])
+            
     return result
 
 # ---------------------- Checkpoint Helpers ----------------------
