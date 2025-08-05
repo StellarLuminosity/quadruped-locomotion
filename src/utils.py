@@ -18,6 +18,7 @@ import cv2
 # ------------------- Video rendering code helpers -------------------
 
 def _safe_max(values):
+    """Return the maximum absolute value from a sequence, with a minimum threshold of 1e-6 to avoid division by zero."""
     m = max(abs(v) for v in values)
     return m if m > 1e-6 else 1.0
 
@@ -31,6 +32,7 @@ def normalize_commands(commands_buffer):
     return max_lin_x, max_lin_y, max_ang_z, max_base_h, max_jump_h
 
 def draw_joystick(image, lin_x, lin_y, ang_z, base_height, jump_height, max_lin_x, max_lin_y, radius=100, x_offset=10, y_offset=10):
+    """Draw a joystick visualization with position indicator on the given image."""
     # Draw the joystick base with gradient directly on the image
     for i in range(radius):
         r = radius - i
@@ -48,6 +50,7 @@ def draw_joystick(image, lin_x, lin_y, ang_z, base_height, jump_height, max_lin_
 
 
 def draw_target_height_bar(image, base_height, max_base_height, target_height=1.0, x_offset=220, y_offset=10):
+    """Draw a vertical bar showing the current and target base height on the image."""
     base_height = max(0, base_height)  # Ensure base_height is non-negative
     # Create a bar to represent the target height
     bar_width = 20
@@ -69,6 +72,7 @@ def draw_target_height_bar(image, base_height, max_base_height, target_height=1.
     return image
 
 def draw_angular_velocity_bar(image, ang_z, max_ang_z, x_offset=10, y_offset=220):
+    """Draw a horizontal bar showing the current angular velocity on the image."""
     # Create a bar to represent the angular velocity
     bar_width = 200
     bar_height = 20
@@ -85,6 +89,7 @@ def draw_angular_velocity_bar(image, ang_z, max_ang_z, x_offset=10, y_offset=220
     return image
 
 def create_video_with_overlay(images_buffer, commands_buffer, output_path, fps=30):
+    """Create a video with joystick and command overlays from a sequence of images."""
     # Get the dimensions of the images
     height, width, _ = images_buffer[0].shape
     
@@ -141,16 +146,7 @@ def create_video_with_overlay(images_buffer, commands_buffer, output_path, fps=3
 # ---------------------- Command Sequence Helpers ----------------------
 
 def interpolate_commands(commands, steps_per_transition):
-    """
-    Interpolate between command vectors to create smooth transitions
-    
-    Args:
-        commands: List of command vectors [lin_x, lin_y, ang_z, base_height, jump_height]
-        steps_per_transition: Number of steps to interpolate between each command
-        
-    Returns:
-        List of interpolated command vectors
-    """
+    """Generate smooth transitions between command vectors with the specified number of interpolation steps."""
     result = []
     for i in range(len(commands) - 1):
         start = np.array(commands[i])
@@ -159,4 +155,28 @@ def interpolate_commands(commands, steps_per_transition):
             interp = (1 - alpha) * start + alpha * end
             result.append(interp.tolist())
     return result
+
+# ---------------------- Checkpoint Helpers ----------------------
+
+def get_checkpoints(exp_dir, interval=5000):
+    """Find and return checkpoint numbers that are multiples of the specified interval."""
+    import re
+    import glob
+    
+    # Find all model files matching the pattern
+    model_files = glob.glob(os.path.join(exp_dir, 'model_*.pt'))
+    
+    # Extract checkpoint numbers
+    checkpoints = []
+    for f in model_files:
+        match = re.search(r'model_(\d+)\.pt$', f)
+        if match:
+            ckpt = int(match.group(1))
+            if ckpt % interval == 0:  # Only include checkpoints that are multiples of interval
+                checkpoints.append(ckpt)
+    
+    return sorted(checkpoints)
+
+
+
 

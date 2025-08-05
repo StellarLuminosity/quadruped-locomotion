@@ -8,40 +8,10 @@ from rsl_rl.runners import OnPolicyRunner
 import numpy as np
 import genesis as gs
 import config
-from utils import create_video_with_overlay, interpolate_commands
-
-# ---------------------------- Main Routine ----------------------------
-
-def get_checkpoints(exp_dir, interval=5000):
-    """
-    Find all checkpoint files and return those that are multiples of the given interval.
-    
-    Args:
-        exp_dir: Path to the experiment directory
-        interval: Interval between checkpoints to process (default: 5000)
-        
-    Returns:
-        List of checkpoint numbers that are multiples of the interval
-    """
-    import re
-    import glob
-    
-    # Find all model files matching the pattern
-    model_files = glob.glob(os.path.join(exp_dir, 'model_*.pt'))
-    
-    # Extract checkpoint numbers
-    checkpoints = []
-    for f in model_files:
-        match = re.search(r'model_(\d+)\.pt$', f)
-        if match:
-            ckpt = int(match.group(1))
-            if ckpt % interval == 0:  # Only include checkpoints that are multiples of interval
-                checkpoints.append(ckpt)
-    
-    return sorted(checkpoints)
+from utils import create_video_with_overlay, interpolate_commands, get_checkpoints, process_checkpoint
 
 def process_checkpoint(exp_name, ckpt):
-    """Process a single checkpoint and generate evaluation video."""
+    """Load a checkpoint, run evaluation, and generate a video with command overlays."""
     print(f"\n{'='*50}")
     print(f"Processing checkpoint: {ckpt}")
     print(f"{'='*50}")
