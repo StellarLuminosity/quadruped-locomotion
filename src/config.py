@@ -137,7 +137,7 @@ def get_eval_env_config():
     """Modified environment config for evaluation (more lenient termination)."""
     config = get_env_config()
     config.update({
-        "termination_if_roll_greater_than": 50,   # More lenient for demos
+        "termination_if_roll_greater_than": 50,
         "termination_if_pitch_greater_than": 50,
     })
     return config

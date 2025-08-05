@@ -180,7 +180,9 @@ def main():
         logging_level="warning",
     )
 
+    # -------------------------------
     # Process each checkpoint
+    # -------------------------------
     for ckpt in checkpoints:
         try:
             process_checkpoint(args.exp_name, ckpt)

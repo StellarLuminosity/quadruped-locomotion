@@ -54,7 +54,7 @@ def validate_experiment(exp_name: str, ckpt: int) -> Path:
 
 def load_model(log_dir: Path, ckpt: int, device: str):
     """Load trained model and create inference policy."""
-    print(f"📋 Loading experiment configuration...")
+    print("Loading experiment configuration")
     
     # Load configs (try new format first, fallback to old)
     config_path = log_dir / "configs.pkl"
@@ -66,11 +66,11 @@ def load_model(log_dir: Path, ckpt: int, device: str):
             # Old format fallback
             env_cfg, obs_cfg, reward_cfg, command_cfg, train_cfg = configs
     except:
-        print("❌ Failed to load configs. Using default evaluation configs.")
+        print("Failed to load configs. Using default evaluation configs.")
         env_cfg, obs_cfg, reward_cfg, command_cfg = get_eval_configs()
         train_cfg = {}  # Will be reconstructed
     
-    print(f"🤖 Creating evaluation environment...")
+    print("Creating evaluation environment")
     env = Go2Env(
         num_envs=1,
         env_cfg=env_cfg,
@@ -81,20 +81,20 @@ def load_model(log_dir: Path, ckpt: int, device: str):
         device=device,
     )
     
-    print(f"🧠 Loading trained model (checkpoint {ckpt})...")
+    print("Loading trained model")
     runner = OnPolicyRunner(env, train_cfg, str(log_dir), device=device)
     model_path = log_dir / f"model_{ckpt}.pt"
     runner.load(str(model_path))
     policy = runner.get_inference_policy(device=device)
     
-    print("✅ Model loaded successfully")
+    print("Model loaded successfully")
     return env, policy
 
 
 def run_demo_mode(env, policy, device: str, duration: int = 300):
     """Run basic demonstration with forward walking."""
-    print(f"\n🎬 Running demo mode for {duration} steps...")
-    print("🎯 Robot will walk forward at varying speeds")
+    print("Running demo mode for {duration} steps")
+    print("Robot will walk forward at varying speeds")
     
     obs, _ = env.reset()
     
@@ -111,13 +111,13 @@ def run_demo_mode(env, policy, device: str, duration: int = 300):
                 print(f"Step {step:3d}: Speed = {speed:.2f} m/s")
             
             if dones.any():
-                print("🔄 Environment reset due to termination")
+                print("Environment reset due to termination")
                 obs, _ = env.reset()
 
 
 def run_interactive_mode(env, policy, device: str):
     """Run interactive mode with keyboard control."""
-    print(f"\n🎮 Interactive mode started!")
+    print("Interactive mode started")
     print("Controls:")
     print("  W - Forward    S - Backward")
     print("  A - Left       D - Right") 
@@ -145,11 +145,11 @@ def run_interactive_mode(env, policy, device: str):
         import keyboard
         keyboard_available = True
     except ImportError:
-        print("⚠️  'keyboard' package not available. Install with: pip install keyboard")
+        print("keyboard package not available. Install with: pip install keyboard")
         keyboard_available = False
         
     if not keyboard_available:
-        print("🔄 Running automatic demo instead...")
+        print("Running automatic demo instead")
         run_demo_mode(env, policy, device)
         return
     
@@ -160,7 +160,7 @@ def run_interactive_mode(env, policy, device: str):
             for key, cmd in commands.items():
                 if keyboard.is_pressed(key):
                     if key == 'x':
-                        print("\n👋 Exiting interactive mode")
+                        print("Exiting interactive mode")
                         return
                     current_cmd = cmd.copy()
                     break
@@ -175,7 +175,7 @@ def run_interactive_mode(env, policy, device: str):
                 print(f"Step {step}: Command = {cmd_str}")
             
             if dones.any():
-                print("🔄 Environment reset")
+                print("Environment reset")
                 obs, _ = env.reset()
 
 
@@ -217,14 +217,14 @@ def main():
         elif args.mode == "interactive":
             run_interactive_mode(env, policy, args.device)
         
-        print("\n✅ Evaluation completed successfully!")
+        print("Evaluation completed successfully!")
         
     except KeyboardInterrupt:
-        print("\n⚠️  Evaluation interrupted by user")
+        print("Evaluation interrupted by user")
         sys.exit(1)
         
     except Exception as e:
-        print(f"\n❌ Evaluation failed: {e}")
+        print(f"Evaluation failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
