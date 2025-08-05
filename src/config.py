@@ -174,17 +174,17 @@ def get_eval_reward_config():
 
 # Command vector format: [ lin_x, lin_y, ang_z, base_height, jump_height ]
 default_key_commands = [
-    [1.0, 0.0, 0.0, 0.3, 0.7],    # forward
-    [0.0, 1.0, 0.0, 0.3, 0.7],    # left
-    [0.0, -1.0, 0.0, 0.3, 0.7],   # right
-    [-1.0, 0.0, 0.0, 0.3, 0.7],   # backward
-    [0.0, 0.0, 0.0, 0.3, 0.7],    # stop
+    [0.0, 0.0, 0.0, 0.3, 0.7], 
+    [0.3, 0.0, 0.0, 0.3, 0.7], 
+    [0.0, 0.3, 0.0, 0.3, 0.7], 
+    [0.0, -0.3, 0.0, 0.3, 0.7], 
+    [-0.3, 0.0, 0.0, 0.3, 0.7], 
+    [0.0, 0.0, 0.0, 0.3, 0.7], 
 ]
 
 key_commands = ['w', 'a', 's', 'd', 'j', 'f', 'd']
-steps_per_transition = 60
-transition_break_steps = 30  # Number of steps to pause at each edge before transitioning
+steps_per_transition = 35
+transition_break_steps = 40  # Number of steps to pause at each edge before transitioning
 jump_step = 5 # jump every # steps
-num_envs = 3
+num_envs = 50
 output_video_path = "videos/my_experiment.mp4"
-

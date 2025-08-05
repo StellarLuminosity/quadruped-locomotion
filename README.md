@@ -6,7 +6,6 @@ This project implements a quadruped locomotion system using the Genesis physics 
 ![til](sim.gif)
 
 ## Features
-
 - **Multi-task Learning**: Single policy handles walking, turning, height control, and jumping
 - **Adaptive Curriculum Learning**: Optional progressive learning stages from basic stability to advanced agility
 - **Domain Randomization**: Sim-to-real transfer techniques for robust policies
@@ -34,13 +33,40 @@ go2_eval_teleop.py → Trained Model → go2_env.py → Genesis Physics → Vide
 
 ### File Structure
 
-- **go2_env.py**: Core environment implementation with physics, rewards, and curriculum
-- **go2_train.py**: Training script with PPO algorithm and curriculum learning options
-- **go2_eval_teleop.py**: Evaluation script with teleoperation and video generation
-- **config.py**: Configuration parameters for environment, training, and evaluation
-- **utils.py**: Utility functions for video rendering, command processing, and more
+```
+quadruped-locomotion-og/
+├── src/
+│   ├── go2_train.py         # Main training script
+│   ├── go2_eval_teleop.py   # Evaluation script with keyboard teleoperation
+│   ├── go2_env.py           # Core environment with physics, rewards, and curriculum
+│   ├── config.py            # All configuration parameters
+│   └── utils.py             # Helper functions for video, commands, etc.
+├── rsl_rl/                  # Git submodule for RSL-RL framework
+├── genesis/                 # Git submodule for Genesis physics engine
+├── logs/                    # Directory for storing training logs and model checkpoints
+├── requirements.txt         # Python package dependencies
+├── instructions.md          # Detailed setup and usage instructions
+└── README.md                # This file
+```
 
-## Key Technical Concepts
+## Training Approach and Results
+
+### Curriculum vs Implicit Learning
+
+In this project, I explored both curriculum learning and implicit learning approaches for training the quadruped robot. After training both models for the same number of steps, the curriculum learning approach demonstrated superior performance in terms of stability and convergence speed.
+
+![Curriculum Learning](curr.gif) ![Implicit Learning](impl.gif)
+
+*Left: Curriculum learning shows more stable gait and better command following. Right: Implicit learning struggles with stability and direction.*
+
+The curriculum learning approach uses a 5-stage progressive training system that gradually increases complexity:
+1. **Foundation**: Basic stability and posture
+2. **Basic Locomotion**: Forward/backward movement
+3. **Advanced Locomotion**: Directional control and turning
+4. **Agility**: Higher speeds and dynamic movements
+5. **Mastery**: Complex behaviors including jumping
+
+This staged approach allows the agent to master fundamental skills before moving to more complex tasks, resulting in more stable and reliable locomotion compared to the implicit learning approach which trains on all aspects simultaneously. 
 
 ### Adaptive Curriculum Learning
 
