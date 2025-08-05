@@ -11,51 +11,7 @@ from genesis.utils.geom import (
     inv_quat,
     transform_quat_by_quat,
 )
-
-# ============================================================================
-# CONSTANTS - Centralized configuration to eliminate magic numbers
-# ============================================================================
-
-# Jump phase constants
-JUMP_PHASE_PEAK_START = 0.3  # When peak height phase begins (30% through jump)
-JUMP_PHASE_PEAK_END = 0.6    # When peak height phase ends (60% through jump)
-JUMP_PHASE_LANDING = 0.6     # When landing phase begins
-JUMP_HEIGHT_TOLERANCE = 0.2  # Tolerance for successful jump height (meters)
-JUMP_SPEED_MULTIPLIER = 0.2  # Multiplier for jump speed reward
-
-# Reward computation constants
-TRACKING_SIGMA_DEFAULT = 0.25
-HEIGHT_REWARD_SIGMA = 0.25
-ACTIVE_MASK_THRESHOLD = 0.01  # Threshold for determining if jump is active
-
-# Physics constants
-GRAVITY = 9.81
-DEFAULT_DT = 0.02  # 50Hz control frequency
-
-# Curriculum learning constants
-CURRICULUM_HISTORY_SIZE = 100  # Number of episodes to track for performance
-STABILITY_STAGE = 0
-LOCOMOTION_STAGE = 1
-AGILITY_STAGE = 2
-MASTERY_STAGE = 3
-
-
-def gs_rand_float(lower, upper, shape, device):
-    """Generates random numbers for domain randomization. Adds variability to training (different starting positions, noise, etc.)"""
-    return (upper - lower) * torch.rand(size=shape, device=device) + lower
-
-
-def gs_rand_gaussian(mean, min, max, n_std, shape, device):
-    """Generates gaussian-distributed random values for more realistic noise patterns for robot sensors/actuators"""
-    mean_tensor = mean.expand(shape).to(device)
-    std_tensor = torch.full(shape, (max - min) / 4.0 * n_std, device=device)
-    return torch.clamp(torch.normal(mean_tensor, std_tensor), min, max)
-
-
-def gs_additive(base, increment):
-    """Adds incremental changes to base values for robot sensor/actuator noise"""
-    return base + increment
-
+from utils import gs_rand_float, gs_rand_gaussian
 
 class AdaptiveCurriculum:
     """
@@ -76,20 +32,26 @@ class AdaptiveCurriculum:
         self.num_envs = num_envs
         self.original_reward_cfg = reward_cfg.copy()
         
+        # --------------------------------
         # Curriculum stages and thresholds
+        # --------------------------------
         self.current_stage = 0
         self.stage_names = ["Stability", "Locomotion", "Agility", "Mastery"]
         self.advancement_thresholds = [0.7, 0.8, 0.9]  # Success rates to advance
         self.min_episodes_per_stage = [500, 1000, 1500]  # Minimum episodes before advancement
         
+        # --------------------------------
         # Performance tracking
+        # --------------------------------
         self.episode_count = 0
         self.stage_episode_count = 0
         self.performance_history = deque(maxlen=CURRICULUM_HISTORY_SIZE)
         self.reward_history = deque(maxlen=CURRICULUM_HISTORY_SIZE)
         self.success_history = deque(maxlen=CURRICULUM_HISTORY_SIZE)
         
+        # --------------------------------
         # Stage-specific reward weights
+        # --------------------------------
         self.stage_reward_weights = {
             0: {  # Stability Stage - Focus on not falling
                 "tracking_lin_vel": 0.3,
@@ -140,8 +102,6 @@ class AdaptiveCurriculum:
                 "jump_landing": 0.08,
             }
         }
-        
-        # Metrics for curriculum advancement
         self.reset_metrics()
     
     def reset_metrics(self):
@@ -151,23 +111,16 @@ class AdaptiveCurriculum:
         self.stage_successes = []
     
     def update_performance(self, episode_rewards, episode_lengths, reset_buf):
-        """
-        Update performance metrics and check for curriculum advancement
-        
-        Args:
-            episode_rewards: Tensor of episode rewards for each environment
-            episode_lengths: Tensor of episode lengths
-            reset_buf: Boolean tensor indicating which episodes ended
-        """
-        # Only process environments that completed episodes
+        """Update performance metrics and check for curriculum advancement"""
         completed_envs = reset_buf.nonzero(as_tuple=False).flatten()
         
         if len(completed_envs) > 0:
-            # Update episode count
             self.episode_count += len(completed_envs)
             self.stage_episode_count += len(completed_envs)
             
+            # --------------------------------
             # Calculate success metrics
+            # --------------------------------
             for env_idx in completed_envs:
                 reward = episode_rewards[env_idx].item()
                 length = episode_lengths[env_idx].item()
@@ -175,14 +128,15 @@ class AdaptiveCurriculum:
                 # Define success criteria based on current stage
                 success = self._evaluate_success(reward, length)
                 
+                # --------------------------------
                 # Update tracking
+                # --------------------------------
                 self.performance_history.append(reward)
                 self.reward_history.append(reward)
                 self.success_history.append(success)
                 self.stage_rewards.append(reward)
                 self.stage_successes.append(success)
-            
-            # Check for curriculum advancement
+
             self._check_advancement()
     
     def _evaluate_success(self, reward, length):
@@ -209,11 +163,15 @@ class AdaptiveCurriculum:
         if len(self.success_history) < 50:
             return
         
+        # --------------------------------
         # Calculate recent success rate
+        # --------------------------------
         recent_successes = list(self.success_history)[-50:]
         success_rate = sum(recent_successes) / len(recent_successes)
         
+        # --------------------------------
         # Check advancement threshold
+        # --------------------------------
         if success_rate >= self.advancement_thresholds[self.current_stage]:
             self._advance_stage()
     
@@ -253,18 +211,8 @@ class Go2Env:
     
     This class manages the physics simulation, reward computation, and observation
     generation for training a Go2 quadruped robot using reinforcement learning.
-    
-    Key Features:
-    - Multi-environment parallel training
-    - Comprehensive reward system for locomotion and jumping
-    - Optional adaptive curriculum learning
-    - Domain randomization for robust training
     """
-    
-    # ============================================================================
-    # INITIALIZATION AND SETUP
-    # ============================================================================
-    
+
     def __init__(
         self,
         num_envs,
@@ -308,7 +256,9 @@ class Go2Env:
             self.adaptive_curriculum = None
             print("\nUSING ORIGINAL IMPLICIT CURRICULUM\n")
 
-        # create physics world
+        # ----------------------
+        # Create physics world
+        # ----------------------
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(dt=self.dt, substeps=2),
             viewer_options=gs.options.ViewerOptions(
@@ -329,10 +279,14 @@ class Go2Env:
             show_viewer=show_viewer,
         )
 
-        # world creation - ground plane
+        # ----------------------
+        # World creation
+        # ----------------------
         self.scene.add_entity(gs.morphs.URDF(file="urdf/plane/plane.urdf", fixed=True))
 
+        # ----------------------
         # Go2 robot creation
+        # ----------------------
         self.base_init_pos = torch.tensor(
             self.env_cfg["base_init_pos"], device=self.device
         )
@@ -348,7 +302,9 @@ class Go2Env:
             ),
         )
 
+        # ----------------------
         # Camera creation
+        # ----------------------
         if add_camera:
             self.cam_0 = self.scene.add_camera(
                 res=(1920, 1080),
@@ -358,20 +314,25 @@ class Go2Env:
                 GUI=True,
             )
 
-        # build
+        # ----------------------
+        # Build environment
+        # ----------------------
         self.scene.build(n_envs=num_envs, env_spacing=(1.0, 1.0))
 
-        # motor dof indices
         self.motor_dofs = [
             self.robot.get_joint(name).dof_idx_local
             for name in self.env_cfg["dof_names"]
         ]
 
+        # ----------------------
         # PD control parameters
+        # ----------------------
         self.robot.set_dofs_kp([self.env_cfg["kp"]] * self.num_actions, self.motor_dofs) # Position gain
         self.robot.set_dofs_kv([self.env_cfg["kd"]] * self.num_actions, self.motor_dofs) # Velocity gain
 
-        # prepare reward functions and multiply reward scales by dt
+        # ----------------------
+        # Prepare reward functions
+        # ----------------------
         self.reward_functions, self.episode_sums = dict(), dict()
         for name in self.reward_scales.keys():
             self.reward_scales[name] *= self.dt
@@ -380,7 +341,9 @@ class Go2Env:
                 (self.num_envs,), device=self.device, dtype=gs.tc_float
             )
 
-        # initialize buffers
+        # ----------------------
+        # Initialize buffers
+        # ----------------------
         self.base_lin_vel = torch.zeros(
             (self.num_envs, 3), device=self.device, dtype=gs.tc_float
         )
@@ -466,10 +429,6 @@ class Go2Env:
         to the difference between the commanded height and the default target height. This
         encourages the robot to move more cautiously when operating at non-default heights.
         """
-        # self.commands[envs_idx, 0] = gs_rand_float(*self.command_cfg["lin_vel_x_range"], (len(envs_idx),), self.device)
-        # self.commands[envs_idx, 1] = gs_rand_float(*self.command_cfg["lin_vel_y_range"], (len(envs_idx),), self.device)
-        # self.commands[envs_idx, 2] = gs_rand_float(*self.command_cfg["ang_vel_range"], (len(envs_idx),), self.device)
-        # self.commands[envs_idx, 0] = gs_additive(self.last_actions[envs_idx, 0], self.command_cfg["lin_vel_x_range"][0] + (self.command_cfg["lin_vel_x_range"][1] - self.command_cfg["lin_vel_x_range"][0]) * torch.sin(2 * math.pi * self.episode_length_buf[envs_idx] / 300))
         self.commands[envs_idx, 0] = gs_rand_gaussian(
             self.last_actions[envs_idx, 0],
             *self.command_cfg["lin_vel_x_range"],
@@ -500,7 +459,6 @@ class Go2Env:
         )
         self.commands[envs_idx, 4] = 0.0
 
-        # scale lin_vel and ang_vel proportionally to the height difference between the target and default height
         height_diff_scale = (
             0.5
             + abs(self.commands[envs_idx, 3] - self.reward_cfg["base_height_target"])
@@ -529,7 +487,7 @@ class Go2Env:
         )
         self.commands[envs_idx, 4] = 0.0
 
-        # code automatically reduces velocity commands when height deviates from normal
+        # automatically reduce velocity commands when height deviates from normal
         height_diff_scale = (
             0.5
             + abs(self.commands[envs_idx, 3] - self.reward_cfg["base_height_target"])
@@ -566,7 +524,9 @@ class Go2Env:
         self.robot.control_dofs_position(target_dof_pos, self.motor_dofs)
         self.scene.step()
 
+        # ----------------------
         # State updates
+        # ----------------------
         self.episode_length_buf += 1
         self.base_pos[:] = self.robot.get_pos()    # Robot's 3D Position
         self.base_quat[:] = self.robot.get_quat()  # Robot's orientation (quaternion)
@@ -583,7 +543,9 @@ class Go2Env:
         self.dof_pos[:] = self.robot.get_dofs_position(self.motor_dofs)                 # Joint positions
         self.dof_vel[:] = self.robot.get_dofs_velocity(self.motor_dofs)                 # Joint velocities
 
-        # Resample commands, it is a variable that holds the indices of environments that need to be resampled or reset.
+        # ----------------------
+        # Resample commands
+        # ----------------------
         envs_idx = (
             (
                 self.episode_length_buf
@@ -603,19 +565,23 @@ class Go2Env:
             random_idxs_2 = torch.randperm(self.num_envs)[: int(self.num_envs * 0.05)]
             self._sample_jump_commands(random_idxs_2)
 
-        # Update jump_toggled_buf if command 4 goes from 0 -> non-zero
+        # ----------------------
+        # Update jump_toggled_buf
+        # ----------------------
         jump_cmd_now = (self.commands[:, 4] > 0.0).float()
         toggle_mask = ((self.jump_toggled_buf == 0.0) & (jump_cmd_now > 0.0)).float()
         self.jump_toggled_buf += (
             toggle_mask * self.reward_cfg["jump_reward_steps"]
         )  # stay 'active' for n steps, for example
         self.jump_toggled_buf = torch.clamp(self.jump_toggled_buf - 1.0, min=0.0)
-        # Update jump_target_height if command 4 goes from 0 -> non-zero
+        # Update jump_target_height
         self.jump_target_height = torch.where(
             jump_cmd_now > 0.0, self.commands[:, 4], self.jump_target_height
         )
 
-        # if robot falls, reset environment
+        # ----------------------
+        # Reset environment
+        # ----------------------
         self.reset_buf = self.episode_length_buf > self.max_episode_length
         self.reset_buf |= (
             torch.abs(self.base_euler[:, 1])
@@ -639,8 +605,9 @@ class Go2Env:
 
         self.reset_idx(self.reset_buf.nonzero(as_tuple=False).flatten())
 
+        # -----------------------------------------------------------------
         # Compute reward functions and sum them up with appropriate weights
-        # Use adaptive curriculum weights if enabled, otherwise use original weights
+        # -----------------------------------------------------------------
         self.rew_buf[:] = 0.0
         current_reward_scales = self.reward_scales
         
@@ -655,7 +622,9 @@ class Go2Env:
                 self.rew_buf += rew
                 self.episode_sums[name] += rew
         
+        # -----------------------------------------------------------------
         # Update adaptive curriculum performance tracking
+        # -----------------------------------------------------------------
         if self.use_adaptive_curriculum and self.adaptive_curriculum is not None and is_train:
             self.adaptive_curriculum.update_performance(
                 self.episode_sums["tracking_lin_vel"] + self.episode_sums["tracking_ang_vel"],  # Episode rewards
@@ -663,7 +632,9 @@ class Go2Env:
                 self.reset_buf  # Reset buffer indicating completed episodes
             )
 
+        # -------------------------
         # Compute observations
+        # -------------------------
         self.obs_buf = torch.cat(
             [
                 self.base_ang_vel * self.obs_scales["ang_vel"],  # 3
@@ -700,6 +671,9 @@ class Go2Env:
         if len(envs_idx) == 0:
             return
 
+        # -------------------------
+        # Reset environment
+        # -------------------------
         # reset dofs
         self.dof_pos[envs_idx] = self.default_dof_pos
         self.dof_vel[envs_idx] = 0.0
@@ -750,10 +724,7 @@ class Go2Env:
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         return self.obs_buf, None
 
-    # ============================================================================
-    # REWARD FUNCTIONS - Organized reward computation methods
-    # ============================================================================
-
+# ---------------------- Reward Functions ----------------------
     def _reward_tracking_lin_vel(self):
         """Reward for accurately tracking target linear velocities.
         
@@ -814,8 +785,6 @@ class Go2Env:
         """
         active_mask = (self.jump_toggled_buf < ACTIVE_MASK_THRESHOLD).float()
         return active_mask * torch.square(self.base_pos[:, 2] - self.commands[:, 3])
-
-
 
     def _reward_jump_height_tracking(self):
         """Continuous reward for tracking desired jump height during peak phase.

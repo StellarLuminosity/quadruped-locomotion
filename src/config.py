@@ -1,6 +1,28 @@
+# ---------------------- Environment Configurations ----------------------
+# Jump phase constants
+JUMP_PHASE_PEAK_START = 0.3
+JUMP_PHASE_PEAK_END = 0.6 
+JUMP_PHASE_LANDING = 0.6 
+JUMP_HEIGHT_TOLERANCE = 0.2 
+JUMP_SPEED_MULTIPLIER = 0.2 
+
+# Reward computation constants
+TRACKING_SIGMA_DEFAULT = 0.25
+HEIGHT_REWARD_SIGMA = 0.25
+ACTIVE_MASK_THRESHOLD = 0.01 
+
+# Physics constants
+GRAVITY = 9.81
+DEFAULT_DT = 0.02 
+
+# Curriculum learning constants
+CURRICULUM_HISTORY_SIZE = 100 
+STABILITY_STAGE = 0
+LOCOMOTION_STAGE = 1
+AGILITY_STAGE = 2
+MASTERY_STAGE = 3
 
 # ---------------------- Training Configurations ----------------------
-
 def get_env_config():
     """Environment configuration for physics simulation and robot setup."""
     return {

@@ -2,6 +2,24 @@ import os
 import numpy as np
 import cv2
 
+# -------------------- Sim-to-real noise helpers --------------------
+
+def gs_rand_float(lower, upper, shape, device):
+    """Generates random numbers for domain randomization. Adds variability to training (different starting positions, noise, etc.)"""
+    return (upper - lower) * torch.rand(size=shape, device=device) + lower
+
+
+def gs_rand_gaussian(mean, min, max, n_std, shape, device):
+    """Generates gaussian-distributed random values for more realistic noise patterns for robot sensors/actuators"""
+    mean_tensor = mean.expand(shape).to(device)
+    std_tensor = torch.full(shape, (max - min) / 4.0 * n_std, device=device)
+    return torch.clamp(torch.normal(mean_tensor, std_tensor), min, max)
+
+
+def gs_additive(base, increment):
+    """Adds incremental changes to base values for robot sensor/actuator noise"""
+    return base + increment
+
 # ------------------- Video rendering helpers -------------------
 
 def _safe_max(values):

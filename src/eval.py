@@ -1,9 +1,3 @@
-# Enhanced Evaluation Script for Go2 Quadruped Robot
-"""
-Professional evaluation script with multiple evaluation modes and better user experience.
-This replaces the basic go2_eval.py with a more robust implementation.
-"""
-
 import os
 import sys
 import argparse
